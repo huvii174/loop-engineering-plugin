@@ -1,0 +1,8 @@
+# never publish
+.env
+.env.*
+.idea/
+.omc/
+.DS_Store
+*.iml
+node_modules/

@@ -1,0 +1,15 @@
+{
+  "name": "loop-engineering-marketplace",
+  "description": "Marketplace for the loop-engineering plugin — goal-based engineering loops with epic breakdown, design gating, verified iteration, and compounding memory.",
+  "owner": {
+    "name": "Hung Nguyen",
+    "email": "nghung174@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "loop-engineering",
+      "source": "./",
+      "description": "Goal-based engineering loops with design-gated planning, compounding memory, and loop visualization."
+    }
+  ]
+}
