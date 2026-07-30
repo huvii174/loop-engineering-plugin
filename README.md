@@ -73,6 +73,24 @@ as a repeat. Thresholds are per-loop via a `breaker` object in `state.json`;
 `breaker_reset_at_iteration` clears counters when a `stuck` loop resumes.
 Verify with `node scripts/test-loop-breaker.mjs` (13 checks).
 
+### Hooks — enforcement, not capture
+
+Three deterministic hooks close the one gap prompts can't: everything else in
+this plugin runs *inside* the loop, so nothing could catch a session that ends
+mid-habit. All three are stat/glob/string checks only (no model calls), exit in
+microseconds when a project has no `.loop/`, **fail open** on any error, and can
+be disabled with `LOOP_HOOKS_OFF=1`.
+
+| Hook | Event | What it does |
+|---|---|---|
+| `boundary-gate` | PreToolUse (Edit/Write) | While a loop is `running`, blocks edits to paths under `Do not touch:` lines in goal.md's `## Global boundaries` — a Must-not upgraded from verifier-caught to mechanically impossible |
+| `memory-gate` | Stop | Blocks ending the session (once) when the loop reached a terminal state but `.loop/memory/` wasn't touched afterwards, or scratch entries were never distilled — "every run leaves the system smarter", enforced |
+| `loop-reminder` | SessionStart | One context line when the project has an open (`running`/`stuck`) loop, so a new session can't forget it |
+
+Deliberately NOT hooks: memory *capture* (distilling needs judgment — that stays
+model-invoked) and self-evaluation (the breaker already runs as code inside the
+loop). Verify with `node scripts/test-hooks.mjs` (18 checks).
+
 ## Commands
 
 | Command | What it does |
