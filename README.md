@@ -34,6 +34,14 @@ install. To get a new version: `claude plugin marketplace update
 loop-engineering-marketplace` then `claude plugin update
 loop-engineering@loop-engineering-marketplace`, and restart the session to apply.
 
+**⚠ Restart is not optional.** A session started before an install/update keeps
+serving the OLD command text and — worse — leaves the hooks **inert**, while
+`claude plugin list` happily reports the new version. Nothing warns you. Two
+skew tells: the breaker prints `[plugin vX.Y.Z]` read from disk on every check
+(compare it against the behavior you're seeing), and a skill/agent named in
+this README that fails to resolve in-session means the session predates the
+install. When in doubt: restart.
+
 ## The loop
 
 ```mermaid

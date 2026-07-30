@@ -19,15 +19,16 @@ contract first: `Skill(skill: "loop-engineering:loop-engine")`.
    field, load at most 5 entries, and apply their gotchas proactively.
 3. Behavior by `state.json.status`:
    - `designed` or `running` → proceed (resume from the last iteration record).
-   - `stopped-max-iterations` → require a new max in `$ARGUMENTS`; refuse otherwise.
+   - `stopped-max-iterations` → require a new max passed as the command
+     argument; refuse otherwise.
    - `stuck` → ask the user what changed since the breaker fired; on their
      answer, set `breaker_reset_at_iteration` to the current `iteration` in
      `state.json` (this is how the breaker's counters are reset) and proceed.
    - `done` → refuse; point at `/loop-engineering:design` for a new goal.
    - `stopped-user` → confirm the user wants to resume, then proceed.
-4. If `$ARGUMENTS` contains a number, write it to `state.json.max_iterations`
-   before iteration 1 — the argument must survive a crash. Otherwise use the
-   stored value; if absent, 12.
+4. If the command was invoked with a number argument, write it to
+   `state.json.max_iterations` before iteration 1 — the argument must survive a
+   crash. Otherwise use the stored value; if absent, 12.
 
 ## The loop
 
@@ -45,6 +46,12 @@ increment** from the design's work breakdown:
    state file is missing/corrupt; fix that before iterating. This check is
    deterministic code, not a judgment call — never skip it, and never overrule
    an exit `2`.
+
+   The breaker also prints `[plugin vX.Y.Z]` read **from disk**. If features
+   this command text describes are missing from your session (a skill or agent
+   listed here doesn't resolve), the session was started before the plugin was
+   installed/updated and is silently serving stale text — stop and tell the
+   user to restart the session before doing loop work.
 1. **Select** the next incomplete work item (or the fix for the previous
    iteration's REJECT). State it in one sentence. Get the "already tried" block
    with
@@ -62,10 +69,16 @@ increment** from the design's work breakdown:
    tell it):
 
    ```markdown
+   ## Project root
+   <absolute path — the verifier's cwd is NOT your project; every command it
+   runs must be anchored here>
+   ## Target criterion(s)
+   Done when: <quoted VERBATIM from .loop/goal.md>
+   Must not: <quoted VERBATIM>
+   <one block per criterion this iteration claims — an iteration may close more
+   than one; the verifier judges each separately>
    ## Intent
    <this iteration's one-sentence intent>
-   ## Target criterion
-   Done when: <quoted VERBATIM from .loop/goal.md>
    ## Diff / files touched
    <file list + summary of the change>
    ## Claimed verification

@@ -12,9 +12,16 @@ You were not part of the implementation and must not trust its reasoning — the
 implementer never grades its own work. **Your default stance is REJECT unless the
 evidence is strong.**
 
-You receive: the iteration's intent, the targeted success criterion from
-`.loop/goal.md` (its `Done when:` line), the diff/files touched, and the
-implementer's claimed verification.
+You receive: the **project root** (absolute path — your cwd is not the project;
+anchor every command there), the targeted success criterion/criteria from
+`.loop/goal.md` (`Done when:` + `Must not:` lines — an iteration may claim more
+than one; judge each separately), the iteration's intent, the diff/files
+touched, and the implementer's claimed verification.
+
+**Scratch probes** (mutation checks, reference copies): create them in the
+system temp directory, never inside or beside the project tree — a sibling
+directory can land in someone's repo or worktree. Delete them when done, and
+never modify the real project during verification.
 
 ## Checks (ALL six must pass for APPROVE)
 

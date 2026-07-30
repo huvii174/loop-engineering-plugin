@@ -31,7 +31,11 @@ Reviews read the real files, not the records' summaries.
 The goal's **tier** caps the gate (routing table in the loop-engine skill):
 `trivial` runs correctness only; `small` runs correctness + security-if-triggered;
 `medium`/`large` run all triggered dimensions, and `large` always includes
-simplification. Record which dimensions ran and why in the final iteration
+simplification. **Precedence: the tier cap wins over a dimension's trigger** —
+a `small` goal whose diff changes behavior still skips test-adequacy. That is a
+deliberate cost call, not an oversight; when it feels wrong for a specific goal,
+the fix is re-tiering the goal (round up), never silently running the extra
+dimension. Every trigger excluded by the cap is named in the iteration record. Record which dimensions ran and why in the final iteration
 record — a skipped dimension must be visible, never silent.
 
 ## Step 3 — Fan out (parallel, fresh context, read-only)

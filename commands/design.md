@@ -35,7 +35,9 @@ Interview the user iteratively until you reach the confidence threshold:
 
 1. Ask **targeted, non-redundant questions in small batches (2–4 per round)**,
    leading each round with the single most decision-blocking question, and
-   preferring the AskUserQuestion tool with concrete options. Cover, in priority
+   preferring the AskUserQuestion tool with concrete options (when that tool is
+   unavailable — e.g. in a delegated context — run the interview as explicit
+   written Q&A rounds instead; never skip the rounds). Cover, in priority
    order: success criteria (how do we *verify* the goal is met?), scope boundaries
    (in/out), constraints (stack, style, performance, deadlines), edge cases and
    failure modes, and integration points with existing code.
@@ -123,16 +125,27 @@ or satisfy the goal.
 breakdown (each item small enough for one loop iteration), verification method per
 item, and risks.
 
+**External anchors are authored HERE, not during the loop.** If a criterion
+uses a golden sample / reference output, create that file now (status is still
+`designed`), pin its hash into the criterion's `Done when:`, and add its
+`Do not touch:` boundary immediately. An anchor created during the loop is
+created inside the exact window where it must be immutable — the implementation
+gets a chance to shape its own judge. The verifier will check the anchor's
+mtime predates the implementation.
+
 **`.loop/state.json`** (full schema in the `loop-engineering:loop-engine` skill)
 ```json
 {
   "status": "designed",
   "run_id": "run-<ISO date>",
+  "tier": "trivial | small | medium | large",
   "iteration": 0,
   "max_iterations": 12,
-  "confidence_at_design": "<your final %>",
+  "confidence_at_design": "<your final min-across-dimensions %>",
   "created": "<ISO date>",
   "updated": "<ISO date>",
+  "breaker": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
+  "breaker_reset_at_iteration": 0,
   "history": []
 }
 ```

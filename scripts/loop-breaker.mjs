@@ -18,7 +18,18 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** Plugin version read from disk — the session's cached skill text can be stale
+ *  after an update ("restart to apply"), but this script always runs from disk.
+ *  Printing it on every check makes version skew visible instead of silent. */
+export function pluginVersion() {
+  try {
+    const p = join(dirname(fileURLToPath(import.meta.url)), '..', '.claude-plugin', 'plugin.json');
+    return JSON.parse(readFileSync(p, 'utf8')).version ?? 'unknown';
+  } catch { return 'unknown'; }
+}
 
 const DEFAULTS = { stagnation: 3, frustration: 3, noProgress: 5, plateau: 4, similarity: 0.85 };
 
@@ -280,12 +291,12 @@ function main(argv) {
   if (args.includes('--json')) {
     process.stdout.write(JSON.stringify(verdict, null, 2) + '\n');
   } else if (verdict.stop) {
-    process.stdout.write(`STOP (${verdict.reason}) -> set status: "${verdict.status}"\n${verdict.detail}\n`);
+    process.stdout.write(`STOP (${verdict.reason}) [plugin v${pluginVersion()}] -> set status: "${verdict.status}"\n${verdict.detail}\n`);
   } else {
     process.stdout.write(
-      `CONTINUE — iteration ${verdict.counters.iteration}/${verdict.counters.max_iterations}, ` +
+      `CONTINUE [plugin v${pluginVersion()}] — iteration ${verdict.counters.iteration}/${verdict.counters.max_iterations}, ` +
       `stagnation ${verdict.counters.stagnation}, frustration ${verdict.counters.frustration}, ` +
-      `consecutive fails ${verdict.counters.trailing_fails}\n`
+      `consecutive fails ${verdict.counters.trailing_fails}, criteria-flat ${verdict.counters.plateau}\n`
     );
   }
   return verdict.stop ? 2 : 0;

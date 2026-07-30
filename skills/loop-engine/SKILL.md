@@ -34,12 +34,13 @@ committed so loop history travels with the repo.
 {
   "status": "designed | running | done | stuck | stopped-max-iterations | stopped-user",
   "run_id": "run-2026-07-29",
+  "tier": "small",
   "iteration": 3,
   "max_iterations": 12,
   "confidence_at_design": "96%",
   "created": "2026-07-29",
   "updated": "2026-07-29",
-  "breaker": { "stagnation": 3, "frustration": 3, "noProgress": 5, "similarity": 0.85 },
+  "breaker": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
   "breaker_reset_at_iteration": 0,
   "history": [
     {"n": 1, "intent": "scaffold API route", "approach": "minimal Express route + fixture test",
@@ -124,16 +125,20 @@ printed reason and `status`, then stop. The table below documents what the
 script implements (thresholds overridable per-loop via a `breaker` object in
 `state.json`; reset after a `stuck` resume via `breaker_reset_at_iteration`):
 
-| Condition | Detection | status |
-|---|---|---|
-| Goal met | every criterion verified APPROVE with evidence | `done` |
-| Iteration budget | `iteration >= max_iterations` (default 12) | `stopped-max-iterations` |
-| **Stagnation** | same error/failure reason 3 consecutive iterations | `stuck` |
-| **Frustration** | same *action* attempted 3 consecutive iterations (even with different errors) | `stuck` |
-| **No progress** | 5 consecutive fails with no pass in between | `stuck` |
-| **Plateau** | `criteria_passed` flat for 4 iterations despite passing verdicts | `stuck` |
-| Verifier escalation | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
-| User cancel | user says stop | `stopped-user` |
+**Ownership matters:** the script decides only the ⚙ rows; the others are the
+model's to detect — the script echoes `status` but will happily say CONTINUE on
+a goal that is already met.
+
+| Condition | Owner | Detection | status |
+|---|---|---|---|
+| Goal met | model | every criterion verified APPROVE with evidence → run the Review Gate, then `done` | `done` |
+| Iteration budget | ⚙ script | `iteration >= max_iterations` (default 12) | `stopped-max-iterations` |
+| **Stagnation** | ⚙ script | same error/failure reason 3 consecutive iterations | `stuck` |
+| **Frustration** | ⚙ script | same *action* attempted 3 consecutive iterations (even with different errors) | `stuck` |
+| **No progress** | ⚙ script | 5 consecutive fails with no pass in between | `stuck` |
+| **Plateau** | ⚙ script | `criteria_passed` flat for 4 iterations despite passing verdicts | `stuck` |
+| Verifier escalation | model | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
+| User cancel | model | user says stop | `stopped-user` |
 
 No-progress is the backstop for thrashing where every attempt fails
 *differently* — five distinct errors from five distinct approaches — which
