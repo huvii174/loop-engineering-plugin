@@ -12,19 +12,27 @@ and the memory-compounding pattern of
 
 ## Install (import into any project)
 
-From a local clone:
-
-```bash
-/plugin marketplace add /path/to/loop-engineering-plugin
-/plugin install loop-engineering@loop-engineering-marketplace
 ```
-
-Or push this directory to GitHub and:
-
-```bash
 /plugin marketplace add huvii174/loop-engineering-plugin
 /plugin install loop-engineering@loop-engineering-marketplace
 ```
+
+(Equivalent CLI: `claude plugin marketplace add huvii174/loop-engineering-plugin`
+then `claude plugin install loop-engineering@loop-engineering-marketplace`.
+From a local clone, pass the directory path to `marketplace add` instead.)
+
+**Three similar names — don't mix them up:**
+
+| Name | What it is | Where you use it |
+|---|---|---|
+| `loop-engineering-plugin` | the GitHub **repo** | `marketplace add huvii174/loop-engineering-plugin` |
+| `loop-engineering-marketplace` | the **marketplace** declared inside it | the part after `@` in `plugin install` |
+| `loop-engineering` | the **plugin** itself | `plugin install loop-engineering@…`, command prefix `/loop-engineering:…` |
+
+**Update gotcha:** `claude plugin install` does **not** upgrade an existing
+install. To get a new version: `claude plugin marketplace update
+loop-engineering-marketplace` then `claude plugin update
+loop-engineering@loop-engineering-marketplace`, and restart the session to apply.
 
 ## The loop
 
@@ -71,7 +79,7 @@ signatures are normalized (timestamps, hex addresses, paths → basenames, numbe
 trigram Jaccard raised by containment at 0.85, so a reworded retry still counts
 as a repeat. Thresholds are per-loop via a `breaker` object in `state.json`;
 `breaker_reset_at_iteration` clears counters when a `stuck` loop resumes.
-Verify with `node scripts/test-loop-breaker.mjs` (13 checks).
+Verify with `node scripts/test-loop-breaker.mjs` (16 checks).
 
 ### Hooks — enforcement, not capture
 
