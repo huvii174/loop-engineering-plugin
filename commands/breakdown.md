@@ -82,7 +82,19 @@ until they approve.
 
 ## Step 4 — Write the epic artifacts
 
-**`.loop/epic.md`**
+Each epic gets its **own instance directory** — epics must never share or
+overwrite files: working state lives in `.loop/epics/<epic-slug>/`, and the
+one-line pointer file `.loop/active-epic` names the slug that `design` and
+`loop` operate on by default. Multiple epics may coexist (switch by rewriting
+the pointer); only one is *active* at a time per `.loop/` — true parallel
+execution still needs one worktree per epic.
+
+Migration: if legacy singleton files `.loop/epic.md` / `.loop/backlog.md`
+exist, move them into `.loop/epics/<derived-slug>/` (slug from the epic's
+title; `.loop/archive/epics/<slug>/` instead if that epic is finished) before
+writing anything.
+
+**`.loop/epics/<epic-slug>/epic.md`**
 ```markdown
 # Epic: <name>
 <one-paragraph epic statement + business outcome>
@@ -95,7 +107,7 @@ until they approve.
 ## Open questions
 ```
 
-**`.loop/backlog.md`**
+**`.loop/epics/<epic-slug>/backlog.md`**
 ```markdown
 # Backlog — <epic name>
 | # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Tier | Status |
@@ -113,6 +125,10 @@ rejected orderings, scope calls — in the `loop-engineering:loop-memory` skill'
 decisions format (**decision** — rationale; alternatives rejected; epic-slug).
 `epic.md` states the outcome; `decisions.md` is what the design gate and future
 runs actually recall — a decision recorded only in epic prose gets re-asked.
+
+**Write the pointer**: put the epic slug (one line) into `.loop/active-epic` —
+this is what `design` and `loop` resolve. If another epic was active, confirm
+the switch with the user before overwriting the pointer.
 
 **Open the epic rollup** at `.loop/memory/epics/<epic-slug>.md` with its
 frontmatter (`epic`, `started`, `status: in-progress`) and an empty

@@ -14,14 +14,22 @@ yet" — but only inside explicit, bounded stop conditions.
 
 ```
 .loop/
-  goal.md            # goal + verifiable success criteria checklist (design gate output)
+  active-epic        # (epics only) one line: the slug design/loop operate on
+  epics/<slug>/      # (epics only) one instance dir PER epic — never shared
+    epic.md          #   epic statement + acceptance criteria
+    backlog.md       #   ordered sub-goals + status
+  goal.md            # ACTIVE goal + verifiable success criteria (design gate output)
   design.md          # architecture + ordered work breakdown (design gate output)
   state.json         # machine state — single source of truth for loop position
   iterations/
     0001.md          # one record per iteration (append-only)
     0002.md
+  archive/
+    <run_id>/        # finished goal runs (archived by the design gate)
+    epics/<slug>/    # closed epic instances (archived when the retro is written)
   memory/
     learnings.md     # compounded learnings (see loop-memory skill)
+    epics/<slug>.md  # per-epic knowledge rollup — NEVER archived; outlives the instance
     decisions.md     # design decisions + rationale
 ```
 

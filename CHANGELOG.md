@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — 2026-07-31
+
+**Per-epic instance directories** — epics no longer share files.
+
+- `.loop/epics/<slug>/{epic.md, backlog.md}`: one instance dir per epic;
+  running a second epic can no longer overwrite the first, and instances stay
+  short instead of accreting into one long file.
+- `.loop/active-epic` pointer (one line) names the epic `design`/`loop` operate
+  on; switching epics rewrites the pointer with user confirmation.
+- Close semantics: when the last backlog item finishes and the retro is
+  written, the instance dir archives to `.loop/archive/epics/<slug>/`. The
+  knowledge rollup `.loop/memory/epics/<slug>.md` is NEVER archived — the
+  epic's lessons outlive its working files by design.
+- Legacy singleton `.loop/epic.md`/`backlog.md` are migrated on first touch.
+
 ## 0.8.1 — 2026-07-31
 
 **Fresh-session dogfood fixes** — a clean-room agent ran the plugin end-to-end

@@ -79,11 +79,14 @@ below. Two extra rules first:
   status (`done`, `stuck`, `stopped-*`), move `goal.md`, `design.md`,
   `state.json`, and `iterations/` into `.loop/archive/<run_id>/` before writing
   the new goal — loop history must survive sub-goal transitions.
-- **Epic linkage:** if `.loop/backlog.md` exists and this goal matches a
-  backlog item, set that row's status to `designed`, start `goal.md` with
-  `Epic: <name> — backlog item #N`, and use the item's seed `Done when:` as the
-  starting point for the success criteria (refine it; don't contradict it).
-  The epic-level interview already happened — only ask HOW-questions here.
+- **Epic linkage:** if `.loop/active-epic` exists (its one line is the epic
+  slug) and this goal matches an item in `.loop/epics/<slug>/backlog.md`, set
+  that row's status to `designed`, start `goal.md` with
+  `Epic: <slug> — backlog item #N`, and use the item's seed `Done when:` /
+  `Must not:` as the starting point for the success criteria (refine them;
+  don't contradict them). The epic-level interview already happened — only ask
+  HOW-questions here. To design against a non-active epic, the user names it;
+  update the pointer only when they say so.
 
 **`.loop/goal.md`**
 ```markdown

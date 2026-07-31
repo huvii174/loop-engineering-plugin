@@ -1,7 +1,7 @@
 {
   "name": "loop-engineering",
   "description": "Goal-based engineering loops for Claude Code: epic breakdown, design-gated planning (95% confidence interview), verified iteration with a deterministic circuit breaker, tiered compounding memory, and mermaid visualization of loop state.",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "author": {
     "name": "Hung Nguyen",
     "email": "nghung174@gmail.com"

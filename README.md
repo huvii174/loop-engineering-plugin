@@ -111,7 +111,7 @@ loop). Verify with `node scripts/test-hooks.mjs` (18 checks).
 
 | Command | What it does |
 |---|---|
-| `/loop-engineering:breakdown "<epic>"` | BA/PM gate for big goals: epic-level 95%-confidence interview (WHAT/why/order — never implementation), then the `epic-planner` agent proposes vertical-slice sub-goals with seed `Done when:` lines, dependencies, and risk-first ordering; you sign off; writes `.loop/epic.md` + `.loop/backlog.md`. Each sub-goal then goes through the design gate one at a time. |
+| `/loop-engineering:breakdown "<epic>"` | BA/PM gate for big goals: epic-level 95%-confidence interview (WHAT/why/order — never implementation), then the `epic-planner` agent proposes vertical-slice sub-goals with seed `Done when:` lines, dependencies, and risk-first ordering; you sign off; writes `.loop/epics/<slug>/epic.md` + `backlog.md` (one instance dir per epic — epics never overwrite each other; `.loop/active-epic` points at the one in play, and closed epics are archived while their knowledge rollup in `.loop/memory/epics/` lives on). Each sub-goal then goes through the design gate one at a time. |
 | `/loop-engineering:design "<goal>"` | Interview-gated design: asks targeted questions round by round, stating its confidence (%) after each, and only writes `.loop/goal.md` + `.loop/design.md` once confidence ≥ 95% (or you sign off its explicit assumptions). Reads memory first so it never re-asks answered questions. The finished design then faces the **tenth-man `plan-critic`** — a fresh-context agent obliged to assume the signed-off plan is wrong and attack it with evidence (max 2 revise rounds; approvals carry the surviving dissent on record; trivial designs skip it visibly). |
 | `/loop-engineering:loop [max]` | Runs the goal-based loop: one small verifiable increment per iteration, evidence-based verification against the success criteria, append-only iteration records, resumable from `.loop/state.json`. Fails don't stop it — bounded stop conditions do. When the last criterion passes, a **review gate** fans out parallel fresh-context reviewers (correctness always; security / test-adequacy / simplification only when their triggers fire), refutes findings before believing them, and feeds confirmed ones back in as normal iterations — only a cleared gate writes `done`. |
 | `/loop-engineering:status` | Read-only dashboard: mermaid pipeline with current position, iteration timeline, success-criteria checklist with evidence, delegated agents, next action. |
@@ -121,8 +121,10 @@ loop). Verify with `node scripts/test-hooks.mjs` (18 checks).
 
 ```
 .loop/
-  epic.md          # (epics only) epic statement + epic acceptance criteria
-  backlog.md       # (epics only) ordered sub-goals with seed criteria + status
+  active-epic      # (epics only) one line: the epic slug currently in play
+  epics/<slug>/    # (epics only) one instance dir PER epic — never overwritten:
+                   #   epic.md (statement + acceptance) + backlog.md (items + status)
+                   #   closed epics move to archive/epics/<slug>/
   goal.md          # ACTIVE goal + verifiable success-criteria checklist
   design.md        # architecture + ordered work breakdown
   state.json       # loop position — makes the loop resumable

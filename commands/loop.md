@@ -149,16 +149,21 @@ gate writes `status: "done"`.
 2. Write a **post-run critique** into the run's last iteration record: false
    starts, noisy signals, and exactly ONE concrete change to improve the next
    run (bounding it to one change is what makes it actually happen).
-3. **Epic bookkeeping:** if `.loop/backlog.md` exists, update this sub-goal's
-   row (`done`, `stuck`, or back to `pending` per outcome), tick any epic
-   acceptance criteria in `.loop/epic.md` now met, and append this sub-goal's row
-   to `.loop/memory/epics/<epic-slug>.md` — including **what it taught** and the
+3. **Epic bookkeeping:** if `.loop/active-epic` exists, resolve the slug and
+   work in `.loop/epics/<slug>/`: update this sub-goal's backlog row (`done`,
+   `stuck`, or back to `pending` per outcome), tick any epic acceptance
+   criteria in that epic's `epic.md` now met, and append this sub-goal's row
+   to `.loop/memory/epics/<slug>.md` — including **what it taught** and the
    **slice verdict** (`well-sliced` / `too coarse` / `too fine` /
    `wrong boundary`). That verdict is the only feedback `epic-planner` ever gets;
    skipping it breaks epic-level compounding. Then name the next pending item for
-   `/loop-engineering:design "<sub-goal>"` — or, if this closed the last item,
-   write the **Epic retro** (Step 4 of the memory command) and report the epic's
-   acceptance-criteria status.
+   `/loop-engineering:design "<sub-goal>"` — or, if this closed the last item:
+   write the **Epic retro** (Step 4 of the memory command), report the epic's
+   acceptance-criteria status, **archive the instance** (`.loop/epics/<slug>/` →
+   `.loop/archive/epics/<slug>/` — its knowledge already lives in
+   `.loop/memory/epics/<slug>.md`, which is never archived), and clear
+   `.loop/active-epic` if it pointed there. (Legacy singleton `.loop/epic.md` /
+   `backlog.md`: migrate per the breakdown command before touching them.)
 4. Show the final loop visualization (same rendering as
    `/loop-engineering:status`) and a plain-language summary: what was achieved,
    evidence per success criterion, what remains.

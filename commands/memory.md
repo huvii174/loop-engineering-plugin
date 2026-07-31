@@ -50,7 +50,7 @@ mark `status: stale` with a reason instead of guessing.
 
 Then **empty `## Scratch (this run)`** — every note is either distilled or deleted.
 
-## Step 4 — Epic rollup (when `.loop/backlog.md` exists)
+## Step 4 — Epic rollup (when `.loop/active-epic` resolves to an epic instance)
 
 Append this sub-goal's row to `.loop/memory/epics/<epic-slug>.md`: item number,
 outcome, iterations used, **what it taught**, and the **slice verdict**
