@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0 — 2026-07-31
+
+**Epic runner** — `/loop-engineering:run [slug] [--hands-off]`: executes a
+signed-off backlog end-to-end in dependency order; the user stops typing
+`design` per item. Orchestration only, never shortcuts: every gate (design,
+tenth-man, verifier, breaker, review gate, memory) still runs per item.
+Interviews are front-loaded in a batched pre-flight (an autonomous run must
+never count on asking mid-flight); `--hands-off` converts gaps to explicit
+assumptions and makes the tenth-man mandatory for every item — autonomy is
+paid for with stricter review. One `stuck` item stops the runner. Parallelism
+is opt-in and worktree-only (one `.loop/` per worktree, merge-back with
+conflict context injected).
+
 ## 0.9.0 — 2026-07-31
 
 **Per-epic instance directories** — epics no longer share files.

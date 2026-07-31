@@ -136,10 +136,14 @@ frontmatter (`epic`, `started`, `status: in-progress`) and an empty
 finish writes the `## Epic retro`. Creating it here — empty — is what guarantees
 the next breakdown has something to read.
 
-## Step 5 — Handoff, one sub-goal at a time
+## Step 5 — Handoff
 
-Tell the user to start the first pending item with
-`/loop-engineering:design "<sub-goal 1 text>"`. Each sub-goal gets its own full
+Offer the user both drive modes:
+- **Conducted:** `/loop-engineering:run` executes the whole backlog in
+  dependency order — every gate still runs; interviews are front-loaded in its
+  pre-flight.
+- **Manual:** `/loop-engineering:design "<sub-goal 1 text>"` per item, when
+  they want to steer between items. Each sub-goal gets its own full
 design gate (its own 95% interview about HOW, its own verifiable criteria) and
 its own loop run. When a sub-goal's loop stops, the loop updates its backlog
 row and names the next pending item (see `/loop-engineering:loop`).
