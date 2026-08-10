@@ -1,6 +1,18 @@
 {
-  "description": "loop-engineering deterministic gates — boundary enforcement while a loop runs, memory-compounding gate at stop, open-loop reminder at session start. All fail-open; bypass with LOOP_HOOKS_OFF=1.",
+  "description": "loop-engineering deterministic gates — boundary enforcement while a loop runs, memory-compounding gate at stop (loop + ad-hoc nudge), open-loop reminder + memory digest at session start, keyword auto-recall on every user prompt. All fail-open; bypass with LOOP_HOOKS_OFF=1.",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/memory-recall.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",

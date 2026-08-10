@@ -8,7 +8,7 @@
  * - bypass: LOOP_HOOKS_OFF=1 disables every gate
  */
 
-import { readFileSync, statSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, statSync, readdirSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 
 export async function readStdinJson() {
@@ -46,6 +46,20 @@ export function newestMtime(dir) {
     } catch { /* fail-open per file */ }
   }
   return newest;
+}
+
+/** Last maxBytes of a file as utf8 (whole file when smaller). null on any error. */
+export function readTail(p, maxBytes) {
+  try {
+    const size = statSync(p).size;
+    if (size <= maxBytes) return readFileSync(p, 'utf8');
+    const fd = openSync(p, 'r');
+    try {
+      const buf = Buffer.alloc(maxBytes);
+      readSync(fd, buf, 0, maxBytes, size - maxBytes);
+      return buf.toString('utf8');
+    } finally { closeSync(fd); }
+  } catch { return null; }
 }
 
 /** Minimal glob → RegExp: supports **, *, ? on forward-slash paths. */

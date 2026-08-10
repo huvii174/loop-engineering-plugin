@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.11.0 — 2026-08-10
+
+**Ambient memory** — the memory flow no longer depends on slash commands.
+Sessions that just type "fix this bug" now get recall pushed in and capture
+nudged out, through deterministic hooks (fail-open, `LOOP_HOOKS_OFF=1`):
+
+- `memory-recall` (UserPromptSubmit, NEW): keyword-greps `.loop/memory/`
+  (learnings, decisions, solutions frontmatter/titles, ad-hoc scratch) against
+  every non-slash prompt and injects the top matches — max 5 entries (the
+  loop-memory recall budget), labeled supplementary ("current code outranks
+  past notes"). Silent when nothing scores; slash prompts skip it (commands own
+  their recall).
+- `loop-reminder` (SessionStart): now also prints a one-line **memory digest**
+  (counts + solution slugs) whenever `.loop/memory/` exists — the cheap layer
+  of the layered recall; the per-prompt grep is the targeted layer.
+- `memory-gate` (Stop): new **ad-hoc branch** — when no loop is involved but
+  the transcript shows real work (≥1 file-edit tool use AND ≥2 error-pattern
+  hits) and nothing under `.loop/memory/` was touched this session, nudge once
+  for ONE line in `.loop/memory/scratch/adhoc.md`. A running loop is never
+  gated; a project without `.loop/memory/` stays silent.
+- `scratch/adhoc.md` is a new scratch surface, not durable memory: ad-hoc
+  sessions append one-liners; `/loop-engineering:memory` harvests and empties
+  it (and now runs standalone with no loop record). Distillation stays
+  model-invoked — the v0.8.0 "enforcement, not capture" doctrine holds; the
+  nudge enforces the habit, never writes the memory.
+- Hook test suite: 18 → 36 checks.
+
 ## 0.10.0 — 2026-07-31
 
 **Epic runner** — `/loop-engineering:run [slug] [--hands-off]`: executes a

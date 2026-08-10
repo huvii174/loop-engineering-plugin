@@ -12,9 +12,13 @@ the three memory shapes, the escalation rule, the tiers, and the recall budget.
 
 ## Step 1 — Harvest
 
-Read the full run record: `.loop/iterations/*.md`, `.loop/state.json`, and the
-`## Scratch (this run)` section of `.loop/memory/learnings.md`. Extract candidates
-in five categories (destination in parentheses):
+Read the full run record: `.loop/iterations/*.md`, `.loop/state.json`, the
+`## Scratch (this run)` section of `.loop/memory/learnings.md`, **and the ad-hoc
+scratch file `.loop/memory/scratch/adhoc.md`** (one-liners captured by sessions
+that worked outside any loop — the memory-gate hook nudges them there). This
+command also runs standalone with no loop record at all: then the ad-hoc scratch
+is the entire harvest. Extract candidates in five categories (destination in
+parentheses):
 
 - **Gotchas** — things that failed and why (→ `learnings.md` `## Gotchas`)
 - **Patterns** — approaches that worked and are reusable (→ `## Patterns`)
@@ -48,7 +52,10 @@ contradiction beside it. Resolve cross-entry contradictions before anything else
 When reality has outgrown an entry but evidence is insufficient to rewrite it,
 mark `status: stale` with a reason instead of guessing.
 
-Then **empty `## Scratch (this run)`** — every note is either distilled or deleted.
+Then **empty both scratch surfaces** — `## Scratch (this run)` in learnings.md
+and `scratch/adhoc.md` — every note is either distilled or deleted. Ad-hoc
+entries keep their `[adhoc]` tag when distilled only if the *source* matters;
+usually they become normal `[gotcha]`/`[pattern]`/`[env]` lines.
 
 ## Step 4 — Epic rollup (when `.loop/active-epic` resolves to an epic instance)
 

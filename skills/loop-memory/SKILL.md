@@ -39,6 +39,7 @@ durable is expensive to promote.**
 | Tier | Written when | Trust | Location |
 |---|---|---|---|
 | **scratch** | mid-iteration, immediately | low — unreviewed | `learnings.md` → `## Scratch (this run)` |
+| **scratch (ad-hoc)** | during non-loop work, immediately | low — unreviewed | `scratch/adhoc.md` |
 | **durable** | end of run, after distilling | medium | the shape-appropriate file above |
 | **host** | after an explicit gate | high — affects every session | host `CLAUDE.md` |
 
@@ -234,3 +235,31 @@ Who recalls what:
 evidence** — current code and command output outrank past notes. A past learning
 must never silently override present evidence; when they conflict, surface the
 conflict and fix the memory rather than echoing it.
+
+## Ambient memory — when no slash command is running
+
+Slash commands recall and capture because their text says to. Ad-hoc sessions
+("fix this bug", typed with no command) get the same flow from three
+deterministic hooks — the push half of the system:
+
+- **Recall, layer 1 (digest):** SessionStart prints one line naming what
+  `.loop/memory/` holds, so the session knows the store exists and can grep it
+  deliberately.
+- **Recall, layer 2 (targeted):** every user prompt is keyword-matched against
+  learnings/decisions/solutions/ad-hoc scratch; the top matches (respecting the
+  5-entry budget) are injected as context, labeled supplementary. Keyword grep,
+  not semantics — treat an empty injection as "nothing matched", never as
+  "nothing exists".
+- **Capture (nudge, once):** at session stop, if files were edited while
+  working through errors and nothing under `.loop/memory/` was touched, the
+  memory-gate blocks once and asks for ONE line in `scratch/adhoc.md`:
+
+  ```markdown
+  - [adhoc][<area>] <fact> — <why> (YYYY-MM-DD)
+  ```
+
+**`scratch/adhoc.md` is scratch, not durable memory.** Ad-hoc sessions append
+one-liners there and never write durable files directly — distillation needs
+judgment, and it happens in `/loop-engineering:memory` (which harvests this file
+even when run standalone, with no loop record). The file must be empty after
+every memory run: distilled or deleted, same rule as `## Scratch (this run)`.
