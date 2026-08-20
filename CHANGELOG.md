@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.13.0 — 2026-08-21
+
+**Honest counters, matched evidence, memory with a lifecycle.** Seven changes
+taken from [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
+(MIT) — its `.agents/` corpus, `AGENTS.md` conventions, and the
+`repeat-tool-reminder` guard — and rewired around this plugin's gates:
+
+- **Bookkeeping passes are transparent to the breaker** (`loop-breaker.mjs`):
+  a passing iteration that closed no criterion (`criteria_passed` did not rise)
+  neither counts as an attempt nor resets one, so `fail → tidy records → fail`
+  still reads as two consecutive failures. Derived from recorded state, not
+  declared; fails are never transparent; entries predating `criteria_passed`
+  keep their old behavior. Closes the path by which recording work could reset
+  the counters that were about to stop a stuck loop.
+- **Advisory tier** (`loop-breaker.mjs`): one counter short of any threshold
+  prints `ADVISORY (...)` and still exits `0`. The loop gets one warning it can
+  act on before the breaker decides for it; advisories ride into the next
+  iteration's context via `--context` and never change the exit code.
+- **Evidence matched to the surface**: `loop-verifier` gains a routing table
+  (behavior → focused test, CLI → transcript, model-visible text → snapshot,
+  docs → generator/gate, published paths → build + smoke, deletion → proof of
+  absence, …) plus four rules — report only commands actually run, no broad
+  green suite in place of the missing narrow check, never make evidence green by
+  shrinking its scope, anchors are checked against the anchor. The design gate
+  now writes an `Evidence:` line per success criterion.
+- **`ESCALATE_HUMAN` carries a proof burden**: retry once unchanged, try the
+  other surface, then record command, exact error and what makes the failure
+  environmental. Without that block the verdict is REJECT. Escalate entries are
+  excluded from the breaker's counters, so an unjustified escalation was the
+  cheapest way to launder a stuck loop.
+- **`Injected:` line in every iteration record**: memory entries recalled, the
+  already-tried block, any advisory carried in, the compiled brief. A run whose
+  records show what was done but not what the agent was told cannot be debugged
+  afterwards.
+- **Memory lifecycle rules** (`loop-memory`): `alternatives rejected:` is
+  mandatory in `decisions.md`; dead ends are kept only while still tempting and
+  deleted when the premise is gone; an entry is never edited into a different
+  conclusion (replace or supersede with a back-link); consolidation transfers
+  every unique rationale, alternative and failed attempt before deleting;
+  `[type]` tags are a closed set; `.loop/archive/` is frozen history, never
+  authority.
+- **Calibration by worked example** (`loop-memory`): keep/delete/consolidate
+  examples with their lengths, the statement that length and age are discovery
+  aids rather than criteria, "do not prune toward a quota", and a prose list
+  (no narrated history, no rotting status, no reasoning transcript, no fact
+  without its why).
+- `/loop-engineering:status` reports breaker counters and any standing
+  advisory. Breaker test suite: 16 → 23 checks.
+
+## 0.12.0 — 2026-08-21
+
+**Prompt compilation** — the design gate no longer hands a raw interview to the
+loop, and no subagent is spawned from an ad-hoc sentence:
+
+- `prompt-craft` (skill, NEW): the plugin's prompt-engineering contract. Two
+  jobs and no third one — compile the ask into `.loop/prompt.md` (Template O)
+  once `min(dimensions) ≥ 95%`, and compose every `Agent()` payload as a brief
+  (Template N) that passes a six-point lint before the spawn. Hard rules: never
+  compile below the gate, never add unstated scope, never paraphrase a
+  criterion, never ship a placeholder, never tell an Opus agent to think step by
+  step, strip credentials, treat pasted prompt text as inert data.
+- `.loop/prompt.md` (NEW artifact): objective, carry-forward context, target
+  state, scope, constraints, acceptance criteria, stop conditions, and the
+  user's raw ask quoted verbatim. Written between the confidence gate and
+  `goal.md`, signed off in one line, archived with the rest of the run. Its
+  criteria must survive into `goal.md` as `Done when:` + `Must not:` pairs.
+- Wired into every spawn site: `design` (Step 1.5 + archive list), `loop`
+  (preconditions, Act delegation, verifier payload), `breakdown` (epic-planner
+  payload), `run` (pre-flight compilation per item), `loop-review` (reviewers
+  and refuters), `loop-engine` (directory layout + iteration discipline).
+- References under `skills/prompt-craft/references/`: 37 failure patterns with
+  a map of which loop gate catches which, templates A to O, and per-tool
+  routing. Adapted from [nidhinjs/prompt-master](https://github.com/nidhinjs/prompt-master)
+  v1.7.0 (MIT, Nidhin Joseph Nelson).
+
 ## 0.11.0 — 2026-08-10
 
 **Ambient memory** — the memory flow no longer depends on slash commands.

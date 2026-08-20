@@ -1,5 +1,5 @@
 ---
-description: Interview-gated design step — question the user until ≥95% confidence, then write .loop/goal.md and .loop/design.md
+description: Interview-gated design step — question the user until ≥95% confidence, compile the ask into .loop/prompt.md, then write .loop/goal.md and .loop/design.md
 argument-hint: "<goal description>"
 ---
 
@@ -70,6 +70,29 @@ design time becomes a wasted loop iteration at run time. If an answer stays vagu
 after one re-ask, record it as `- [ ] OQ: <question>` in `.loop/goal.md` under
 "Open questions" rather than guessing.
 
+## Step 1.5 — Compile the ask into `.loop/prompt.md`
+
+The gate cleared; the ask is still in the user's words, spread across an
+interview transcript. Compile it before designing anything:
+`Skill(skill: "loop-engineering:prompt-craft")`, then write Template O to
+`.loop/prompt.md`.
+
+Compilation restates what the interview settled, in the form Opus reads
+literally: objective, carry-forward context, target state, scope, constraints,
+acceptance criteria, stop conditions, and the user's raw ask quoted verbatim as
+inert evidence. It never adds scope. If compiling surfaces a decision the
+interview never made, that is a gate failure — go back to Step 1 for one more
+round, or record it as a numbered assumption.
+
+Show the compiled brief to the user and get a one-line sign-off. This is the
+last cheap moment to catch a misread ask; after this the loop spends
+iterations. If they edit the brief, the edit propagates into the criteria below,
+not only into `prompt.md`.
+
+Every acceptance criterion in the brief must survive into `goal.md` as a
+`Done when:` plus a `Must not:` boundary. A criterion that cannot be translated
+that way was written at the wrong altitude — rewrite it rather than softening it.
+
 ## Step 2 — Write the design artifacts
 
 When confidence ≥ 95% (or assumptions are signed off), write the artifacts
@@ -77,8 +100,8 @@ below. Two extra rules first:
 
 - **Archive before overwrite:** if `.loop/state.json` exists with a terminal
   status (`done`, `stuck`, `stopped-*`), move `goal.md`, `design.md`,
-  `state.json`, and `iterations/` into `.loop/archive/<run_id>/` before writing
-  the new goal — loop history must survive sub-goal transitions.
+  `prompt.md`, `state.json`, and `iterations/` into `.loop/archive/<run_id>/`
+  before writing the new goal — loop history must survive sub-goal transitions.
 - **Epic linkage:** if `.loop/active-epic` exists (its one line is the epic
   slug) and this goal matches an item in `.loop/epics/<slug>/backlog.md`, set
   that row's status to `designed`, start `goal.md` with
@@ -98,6 +121,11 @@ below. Two extra rules first:
       Done when: <deterministic, checkable condition — prefer an EXTERNAL ANCHOR
       (golden sample, reference output, upstream total) over agent-authored
       tests; "all tests pass" can be gamed, "diff vs reference < 0.01" cannot>
+      Evidence: <the SURFACE this criterion lives on and the narrowest check
+      that would fail if the work were wrong — the exact command where possible.
+      Behavior→focused test; CLI or model-visible text→transcript/snapshot;
+      docs/config→the generator or format gate; published paths→build + smoke;
+      deletion→proof of absence. Routing table in the loop-verifier agent>
       Must not: <the boundary that must hold WHILE meeting it — e.g. "no test
       deleted or weakened, coverage not lowered". A done-criterion without a
       boundary is a license to cheat>
@@ -127,6 +155,14 @@ or satisfy the goal.
 **`.loop/design.md`** — the implementation design: architecture, ordered work
 breakdown (each item small enough for one loop iteration), verification method per
 item, and risks.
+
+**Name the evidence surface per criterion, not just the condition.** A
+`Done when:` whose surface has no check that would fail for its regression is
+not verifiable yet, however precise it sounds: either the criterion moves to a
+surface that has one, or this design's work breakdown includes building that
+check first. The verifier will not accept an unrelated green suite in its place,
+so discovering the gap here costs one question and discovering it later costs an
+iteration.
 
 **External anchors are authored HERE, not during the loop.** If a criterion
 uses a golden sample / reference output, create that file now (status is still
@@ -180,8 +216,12 @@ check — both must hold.
 The design you just wrote is the only artifact in this flow that would otherwise
 go unchecked — and it is the most expensive place to be wrong. Submit it to
 `Agent(subagent_type: "loop-engineering:plan-critic", prompt: <payload>)` with
-paths to `.loop/goal.md`, `.loop/design.md`, and `.loop/memory/` (it especially
-needs `solutions/` and `## What didn't work` as ammunition).
+paths to `.loop/prompt.md`, `.loop/goal.md`, `.loop/design.md`, and
+`.loop/memory/` (it especially needs `solutions/` and `## What didn't work` as
+ammunition). Compose the payload as Template N under the
+`loop-engineering:prompt-craft` lint, and pass paths rather than pasted files —
+the critic must read the current artifacts, not your summary of them.
+`prompt.md` is what lets it check the design against the ask itself.
 
 - **REVISE** → apply the findings (or rebut them with evidence), update the
   artifacts, resubmit. **Maximum 2 rounds**; unresolved disagreement after that

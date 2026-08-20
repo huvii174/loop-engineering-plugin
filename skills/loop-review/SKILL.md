@@ -41,9 +41,12 @@ record — a skipped dimension must be visible, never silent.
 ## Step 3 — Fan out (parallel, fresh context, read-only)
 
 Spawn one `Agent(subagent_type: "general-purpose", ...)` per selected dimension
-**in a single message so they run concurrently**. Each prompt contains: the goal
-statement, the file list, the dimension charter below, and the output contract.
-Reviewers are read-only: they report, they never edit.
+**in a single message so they run concurrently**. Each prompt is Template N from
+the `loop-engineering:prompt-craft` skill, carrying: absolute project root, the
+goal statement, the file list as paths (never pasted bodies), the dimension
+charter below, the output contract, and an explicit read-only clause. Reviewers
+report; they never edit. Same for the Step 4 refuters — a refuter with no output
+contract returns an essay where the gate needs a yes or no.
 
 **Model routing (cost lever — generic Claude Code tiers, no external plugin):**
 dimension reviewers pass `model: "sonnet"`; refuters in Step 4 — a narrow

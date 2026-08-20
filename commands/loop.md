@@ -12,6 +12,11 @@ contract first: `Skill(skill: "loop-engineering:loop-engine")`.
 
 1. `.loop/goal.md` and `.loop/design.md` must exist. If not, stop and tell the
    user to run `/loop-engineering:design` first — never invent a goal yourself.
+   Read `.loop/prompt.md` too when it exists: it is the compiled, signed-off
+   form of the ask, and its carry-forward context block is what every brief you
+   write this run inherits. (Absent means the goal predates the compile step,
+   not that you may skip it — compile it now via the
+   `loop-engineering:prompt-craft` skill and show the user before iterating.)
 2. Read `.loop/state.json` and the last entry in `.loop/iterations/` to know
    exactly where the loop stands. The loop is resumable: never redo completed
    work. Recall memory under budget per the `loop-engineering:loop-memory` skill
@@ -24,6 +29,9 @@ contract first: `Skill(skill: "loop-engineering:loop-engine")`.
    - `stuck` → ask the user what changed since the breaker fired; on their
      answer, set `breaker_reset_at_iteration` to the current `iteration` in
      `state.json` (this is how the breaker's counters are reset) and proceed.
+     Record their answer as the reset's reason in the next iteration record — a
+     reset with no named change is how a stuck loop launders itself and starts
+     the same three failures over.
    - `done` → refuse; point at `/loop-engineering:design` for a new goal.
    - `stopped-user` → confirm the user wants to resume, then proceed.
 4. If the command was invoked with a number argument, write it to
@@ -47,6 +55,14 @@ increment** from the design's work breakdown:
    deterministic code, not a judgment call — never skip it, and never overrule
    an exit `2`.
 
+   An `ADVISORY (...)` line on a continuing check is the breaker's one warning
+   before it fires: a counter is one short of its threshold. **Act on it in
+   THIS iteration** — change the approach rather than its wording, target a
+   success criterion directly, or split the increment — and carry the advisory
+   text into the iteration's context and its `Injected:` line. An advisory read
+   and ignored becomes a `stuck` next iteration, and the loop will have earned
+   it.
+
    The breaker also prints `[plugin vX.Y.Z]` read **from disk**. If features
    this command text describes are missing from your session (a skill or agent
    listed here doesn't resolve), the session was started before the plugin was
@@ -62,11 +78,19 @@ increment** from the design's work breakdown:
 
    and treat it as binding — never repeat a listed failed approach unchanged.
 2. **Act** — implement the increment. Delegate to subagents when parallelism
-   helps, but keep the increment small enough to verify.
+   helps, but keep the increment small enough to verify. **Every delegation is
+   composed as a brief, never as a sentence:** load
+   `Skill(skill: "loop-engineering:prompt-craft")` and write the spawn payload
+   to Template N — absolute project root, one deliverable, inputs as paths,
+   forbidden actions, output contract, stop conditions — then run its six-point
+   lint before spawning. A subagent cannot ask you a follow-up question; what
+   the brief omits, it guesses.
 3. **Verify** — never grade your own work. Call
    `Agent(subagent_type: "loop-engineering:loop-verifier", prompt: <payload>)`
-   with this payload (the agent has fresh context and knows nothing you don't
-   tell it):
+   with the payload below: Template N with the verifier's fields filled in,
+   composed under the prompt-craft lint. The agent has fresh context and knows
+   nothing you don't tell it, and the criteria go in VERBATIM — a paraphrased
+   `Done when:` is a different criterion, and it will grade that one instead.
 
    ```markdown
    ## Project root
@@ -90,11 +114,16 @@ increment** from the design's work breakdown:
    criteria` count as criteria. The goal is only "met" when the verifier — not
    you — has confirmed every criterion with evidence.
 4. **Record** — append `.loop/iterations/NNNN.md` (format in the loop-engine
-   skill, including the `Delegated:` line) and update `.loop/state.json`:
-   increment `iteration`, append the history entry (`n`, `intent`, `approach`,
-   `verdict`, `error_signature`, `criterion`, **`criteria_passed`** — the count
-   of verifier-APPROVED criteria after this iteration; the breaker's plateau
-   detection is blind without it), set `status` and `updated`.
+   skill, including the `Injected:` and `Delegated:` lines) and update
+   `.loop/state.json`: increment `iteration`, append the history entry (`n`,
+   `intent`, `approach`, `verdict`, `error_signature`, `criterion`,
+   **`criteria_passed`** — the count of verifier-APPROVED criteria after this
+   iteration), set `status` and `updated`.
+
+   `criteria_passed` is not optional bookkeeping: it is what lets the breaker
+   see a plateau, and what makes a criterion-closing pass distinguishable from a
+   bookkeeping pass. Omit it and an iteration that only tidied records will
+   silently reset the failure counters that were about to stop a stuck loop.
 5. **Learn (scratch tier)** — if this iteration produced a lesson, append it to
    `## Scratch (this run)` in `.loop/memory/learnings.md`, tagged
    `(<run_id>, iter N)`. Write it raw and immediately; scratch is cheap. It gets

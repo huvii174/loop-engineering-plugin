@@ -34,6 +34,9 @@ asking the user mid-flight. So before executing anything:
    answer? Collect every such gap across ALL items.
 3. Ask the user the collected questions **now, in one batch**, grouped by item.
    Their answers become part of each item's design input.
+   Compile each item's answers with the `loop-engineering:prompt-craft` skill as
+   you go: the item's design gate writes its own `.loop/prompt.md`, and the
+   pre-flight answers are the only interview material it will ever have.
 4. With `--hands-off`: skip the batch; every gap becomes an explicit numbered
    assumption in that item's `goal.md`, and the tenth-man critique becomes
    **mandatory for every item regardless of tier** — autonomy is paid for with
@@ -47,9 +50,12 @@ asking the user mid-flight. So before executing anything:
 For each item in topo order:
 
 1. **Design gate** (full `/loop-engineering:design` flow in epic-driven mode):
-   seeds + pre-flight answers feed the per-dimension gate; archive-and-write,
-   plan-critic per tier rules (or mandatory under `--hands-off`), backlog row
-   → `designed`.
+   seeds + pre-flight answers feed the per-dimension gate; the ask is compiled
+   into that item's `.loop/prompt.md` before anything is designed;
+   archive-and-write, plan-critic per tier rules (or mandatory under
+   `--hands-off`), backlog row → `designed`. Under `--hands-off` the compiled
+   brief is reported to the user rather than signed off by them, and every gap
+   it exposes becomes a numbered assumption.
 2. **Loop** (full `/loop-engineering:loop` flow): breaker step 0 each
    iteration, verifier per increment, review gate before `done`, memory step
    and epic bookkeeping at stop — exactly as if the user had run it by hand.

@@ -53,7 +53,16 @@ A checklist table from `.loop/goal.md`: criterion | status (✅/⬜) | evidence
 From the `Delegated:` line of each iteration record: iteration | agent | task |
 outcome. Omit this section if every record says "none".
 
-## 5. One-paragraph plain summary
+## 5. Breaker standing
+
+Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-breaker.mjs" --json` and report the
+counters as one line (iteration/budget, stagnation, frustration, consecutive
+fails, criteria-flat, bookkeeping), followed by each `ADVISORY` verbatim. An
+advisory is the breaker's last warning before it fires; a dashboard that hides
+it is worse than no dashboard. Reading the state is read-only, so this is safe
+here.
+
+## 6. One-paragraph plain summary
 
 Where the loop stands, iterations used vs budget, and the single next action.
 

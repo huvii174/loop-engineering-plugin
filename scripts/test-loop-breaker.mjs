@@ -110,6 +110,75 @@ const CASES = [
       { n: 3, approach: 'replace the ORM call with a raw query', verdict: 'fail', error_signature: 'e3' },
     ] },
   },
+  {
+    name: 'bookkeeping pass does not reset a failure streak (stagnation still trips)',
+    stop: true, reason: 'stagnation',
+    state: { iteration: 6, max_iterations: 12, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field', criteria_passed: 0 },
+      { n: 2, approach: 'record the iteration and tidy memory', verdict: 'pass', criteria_passed: 0 },
+      { n: 3, approach: 'patch the middleware', verdict: 'fail', error_signature: 'ZodError missing field', criteria_passed: 0 },
+      { n: 4, approach: 'update the design notes', verdict: 'pass', criteria_passed: 0 },
+      { n: 5, approach: 'patch the validator', verdict: 'fail', error_signature: 'ZodError missing field', criteria_passed: 0 },
+    ] },
+  },
+  {
+    name: 'a pass that closes a criterion DOES reset the streak',
+    stop: false,
+    counters: { trailing_fails: 1, stagnation: 1 },
+    state: { iteration: 5, max_iterations: 12, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field', criteria_passed: 0 },
+      { n: 2, approach: 'patch the middleware', verdict: 'fail', error_signature: 'ZodError missing field', criteria_passed: 0 },
+      { n: 3, approach: 'fix the schema properly', verdict: 'pass', criteria_passed: 1 },
+      { n: 4, approach: 'patch the validator', verdict: 'fail', error_signature: 'ZodError missing field', criteria_passed: 1 },
+    ] },
+  },
+  {
+    name: 'a FAIL is never transparent, whatever its criteria_passed says',
+    stop: true, reason: 'stagnation',
+    state: { iteration: 4, max_iterations: 12, history: [
+      { n: 1, approach: 'x', verdict: 'fail', error_signature: 'boom', criteria_passed: 0 },
+      { n: 2, approach: 'y', verdict: 'fail', error_signature: 'boom', criteria_passed: 0 },
+      { n: 3, approach: 'z', verdict: 'fail', error_signature: 'boom', criteria_passed: 0 },
+    ] },
+  },
+  {
+    name: 'a pass without criteria_passed still resets the streak (backward compatible)',
+    stop: false,
+    counters: { trailing_fails: 1, bookkeeping: 0 },
+    state: { iteration: 5, max_iterations: 12, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'boom' },
+      { n: 2, approach: 'patch the middleware', verdict: 'fail', error_signature: 'boom' },
+      { n: 3, approach: 'something that worked', verdict: 'pass' },
+      { n: 4, approach: 'patch the validator', verdict: 'fail', error_signature: 'boom' },
+    ] },
+  },
+  {
+    name: 'advisory one short of stagnation — warns without stopping',
+    stop: false,
+    advisories: ['stagnation'],
+    state: { iteration: 3, max_iterations: 12, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'boom' },
+      { n: 2, approach: 'patch the middleware', verdict: 'fail', error_signature: 'boom' },
+    ] },
+  },
+  {
+    name: 'advisory one short of frustration — warns without stopping',
+    stop: false,
+    advisories: ['frustration'],
+    state: { iteration: 3, max_iterations: 12, history: [
+      { n: 1, approach: 'retry the failing migration script', verdict: 'fail', error_signature: 'E1: table missing' },
+      { n: 2, approach: 'retry the failing migration script again', verdict: 'fail', error_signature: 'E2: column mismatch' },
+    ] },
+  },
+  {
+    name: 'a healthy loop raises no advisory',
+    stop: false,
+    advisories: [],
+    state: { iteration: 3, max_iterations: 12, history: [
+      { n: 1, approach: 'criterion one work', verdict: 'pass', criteria_passed: 1 },
+      { n: 2, approach: 'criterion two work', verdict: 'pass', criteria_passed: 2 },
+    ] },
+  },
 ];
 
 const UNITS = [
@@ -128,9 +197,15 @@ for (const [label, fn] of UNITS) {
 }
 for (const c of CASES) {
   const v = analyze(c.state);
-  const ok = v.stop === c.stop && (!c.reason || v.reason === c.reason);
+  const got = (v.advisories ?? []).map((a) => a.reason).filter((r) => r !== 'bookkeeping');
+  const advisoriesOk = !c.advisories
+    || (got.length === c.advisories.length && c.advisories.every((r) => got.includes(r)));
+  const countersOk = !c.counters
+    || Object.entries(c.counters).every(([k, want]) => v.counters[k] === want);
+  const ok = v.stop === c.stop && (!c.reason || v.reason === c.reason) && advisoriesOk && countersOk;
   if (!ok) failed++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'}  ${c.name}${ok ? '' : ` (got stop=${v.stop} reason=${v.reason})`}`);
+  const detail = ok ? '' : ` (got stop=${v.stop} reason=${v.reason} advisories=[${got}] counters=${JSON.stringify(v.counters)})`;
+  console.log(`${ok ? 'ok  ' : 'FAIL'}  ${c.name}${detail}`);
 }
 
 console.log(failed === 0 ? `\nall ${UNITS.length + CASES.length} checks passed` : `\n${failed} check(s) failed`);

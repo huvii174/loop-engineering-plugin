@@ -15,6 +15,20 @@
  * --context  print the "already tried (do NOT repeat)" block for the next
  *            iteration's prompt instead of checking. Exits 0 on success.
  * --json     machine-readable output for check mode.
+ *
+ * Two rules keep the counters honest, both derived from recorded state rather
+ * than from anything the loop declares about itself:
+ *
+ *   Bookkeeping passes are TRANSPARENT to the failure chain. A pass that closed
+ *   no criterion (criteria_passed did not rise) neither counts as an attempt nor
+ *   resets one, so "fail, fail, tidy the records, fail" still reads as three
+ *   consecutive failures. Recording work is not progress, and it must not be
+ *   able to launder a stuck loop. Fails are never transparent — marking a failed
+ *   attempt as bookkeeping buys nothing.
+ *
+ *   One counter short of a threshold prints an ADVISORY and still exits 0. The
+ *   loop gets one warning it can act on before the breaker takes the decision
+ *   away from it.
  */
 
 import { readFileSync } from 'node:fs';
@@ -112,10 +126,36 @@ function countable(state) {
     .filter((h) => String(h.verdict ?? '').toLowerCase() !== 'escalate');
 }
 
-/** Consecutive trailing failures, newest first. Stops at the first pass. */
+/**
+ * Tag each entry with `_transparent`: a passing iteration that closed no
+ * criterion (`criteria_passed` did not rise above the previous recorded value).
+ * Such an iteration did bookkeeping, not work on the goal, and is invisible to
+ * the failure chain — it neither counts nor resets.
+ *
+ * Only passes can be transparent, and only when `criteria_passed` is recorded on
+ * both sides of the comparison; an entry from before that field existed stays
+ * opaque, so old runs keep their previous behavior.
+ */
+function markTransparency(entries) {
+  let previous = 0;
+  return entries.map((h) => {
+    const scored = typeof h.criteria_passed === 'number';
+    const transparent =
+      String(h.verdict ?? '').toLowerCase() === 'pass' && scored && h.criteria_passed <= previous;
+    if (scored) previous = h.criteria_passed;
+    return { ...h, _transparent: transparent };
+  });
+}
+
+/**
+ * Consecutive trailing failures, newest first. Stops at the first entry that is
+ * neither a failure nor transparent — a real pass closes the streak, a
+ * bookkeeping pass is stepped over as if it never happened.
+ */
 function trailingFails(entries) {
   const out = [];
   for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i]._transparent) continue;
     if (String(entries[i].verdict ?? '').toLowerCase() === 'fail') out.push(entries[i]);
     else break;
   }
@@ -126,7 +166,7 @@ function trailingFails(entries) {
 
 export function analyze(state, overrides = {}) {
   const t = { ...DEFAULTS, ...(state.breaker ?? {}), ...overrides };
-  const entries = countable(state);
+  const entries = markTransparency(countable(state));
   const fails = trailingFails(entries);
   const iteration = Number(state.iteration ?? 0);
   const maxIterations = Number(state.max_iterations ?? 12);
@@ -138,6 +178,7 @@ export function analyze(state, overrides = {}) {
     stagnation: 0,
     frustration: 0,
     plateau: 0,
+    bookkeeping: entries.filter((h) => h._transparent).length,
   };
 
   // plateau — iterations keep "passing" while the criteria-met count stays flat.
@@ -208,28 +249,72 @@ export function analyze(state, overrides = {}) {
       detail: `${counters.trailing_fails} consecutive failures with no pass in between (each failing differently)`,
     };
   }
-  if (counters.plateau >= t.plateau) {
+  if (counters.plateau >= t.plateau && plateauWindowHasPass(entries, t.plateau)) {
     const scored = entries.filter((h) => typeof h.criteria_passed === 'number');
-    const window = scored.slice(-t.plateau);
-    const hasPass = window.some((h) => String(h.verdict ?? '').toLowerCase() === 'pass');
-    if (hasPass) {
-      return {
-        stop: true, status: 'stuck', reason: 'plateau', counters,
-        detail: `criteria-met count stuck at ${window[window.length - 1].criteria_passed} for ${counters.plateau} iterations despite passing verdicts — busy but not progressing`,
-      };
-    }
+    return {
+      stop: true, status: 'stuck', reason: 'plateau', counters,
+      detail: `criteria-met count stuck at ${scored[scored.length - 1].criteria_passed} for ${counters.plateau} iterations despite passing verdicts — busy but not progressing`,
+    };
   }
   return {
     stop: false, status: state.status ?? 'running', reason: null, counters,
     detail: 'no breaker tripped',
+    advisories: advisories(entries, fails, counters, t),
   };
+}
+
+/** Does the plateau window contain a passing verdict? (A flat run of pure failures is no-progress, not plateau.) */
+function plateauWindowHasPass(entries, size) {
+  const window = entries.filter((h) => typeof h.criteria_passed === 'number').slice(-size);
+  return window.some((h) => String(h.verdict ?? '').toLowerCase() === 'pass');
+}
+
+/**
+ * One counter short of its threshold: warn, do not stop. The next iteration's
+ * prompt carries these, so the loop gets a chance to change approach itself
+ * before the breaker takes the choice away. Advisories never change the exit
+ * code — a nudge that can halt a run is a stop condition wearing a disguise.
+ */
+function advisories(entries, fails, counters, t) {
+  const out = [];
+  if (counters.stagnation === t.stagnation - 1) {
+    out.push({
+      reason: 'stagnation',
+      detail: `the same failure has repeated ${counters.stagnation}x ("${fails[0].error_signature}") — one more trips the breaker. Attack a different cause, not the same one again.`,
+    });
+  }
+  if (counters.frustration === t.frustration - 1) {
+    out.push({
+      reason: 'frustration',
+      detail: `the same approach has been retried ${counters.frustration}x ("${fails[0].approach}") — one more trips the breaker. Change the approach, not its wording.`,
+    });
+  }
+  if (counters.trailing_fails === t.noProgress - 1) {
+    out.push({
+      reason: 'no-progress',
+      detail: `${counters.trailing_fails} consecutive failures with no pass in between — one more trips the breaker. Consider a smaller increment or a probe that yields evidence instead of a fix.`,
+    });
+  }
+  if (counters.plateau === t.plateau - 1 && plateauWindowHasPass(entries, t.plateau - 1)) {
+    out.push({
+      reason: 'plateau',
+      detail: `${counters.plateau} iterations have passed verification without closing a criterion — one more trips the breaker. Target a success criterion directly.`,
+    });
+  }
+  if (counters.bookkeeping) {
+    out.push({
+      reason: 'bookkeeping',
+      detail: `${counters.bookkeeping} iteration(s) closed no criterion and are transparent to the failure counters — recording work does not reset a streak.`,
+    });
+  }
+  return out;
 }
 
 // --------------------------------------------------------------------- context
 
 /** The "already tried (do NOT repeat)" block for the next iteration's prompt. */
 export function contextBlock(state) {
-  const entries = countable(state);
+  const entries = markTransparency(countable(state));
   const attempts = entries.filter((h) => h.approach || h.error_signature || h.intent);
   const lines = ['## Already tried — do NOT repeat unchanged'];
 
@@ -238,7 +323,7 @@ export function contextBlock(state) {
   } else {
     for (const h of attempts) {
       const verdict = String(h.verdict ?? '?').toLowerCase();
-      const mark = verdict === 'pass' ? '[pass]' : '[fail]';
+      const mark = h._transparent ? '[bookkeeping]' : verdict === 'pass' ? '[pass]' : '[fail]';
       const why = h.error_signature ? ` -> ${h.error_signature}` : '';
       lines.push(`- ${mark} iter ${h.n}: ${h.approach ?? h.intent ?? '(unrecorded)'}${why}`);
     }
@@ -259,8 +344,10 @@ export function contextBlock(state) {
   lines.push(
     `- iteration ${a.counters.iteration}/${a.counters.max_iterations} | ` +
     `stagnation ${a.counters.stagnation} | frustration ${a.counters.frustration} | ` +
-    `consecutive fails ${a.counters.trailing_fails} | criteria-flat ${a.counters.plateau}`
+    `consecutive fails ${a.counters.trailing_fails} | criteria-flat ${a.counters.plateau} | ` +
+    `bookkeeping ${a.counters.bookkeeping}`
   );
+  for (const adv of a.advisories ?? []) lines.push(`- ADVISORY (${adv.reason}): ${adv.detail}`);
   return lines.join('\n');
 }
 
@@ -296,8 +383,12 @@ function main(argv) {
     process.stdout.write(
       `CONTINUE [plugin v${pluginVersion()}] — iteration ${verdict.counters.iteration}/${verdict.counters.max_iterations}, ` +
       `stagnation ${verdict.counters.stagnation}, frustration ${verdict.counters.frustration}, ` +
-      `consecutive fails ${verdict.counters.trailing_fails}, criteria-flat ${verdict.counters.plateau}\n`
+      `consecutive fails ${verdict.counters.trailing_fails}, criteria-flat ${verdict.counters.plateau}, ` +
+      `bookkeeping ${verdict.counters.bookkeeping}\n`
     );
+    for (const adv of verdict.advisories ?? []) {
+      process.stdout.write(`ADVISORY (${adv.reason}): ${adv.detail}\n`);
+    }
   }
   return verdict.stop ? 2 : 0;
 }

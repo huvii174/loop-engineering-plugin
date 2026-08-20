@@ -18,6 +18,7 @@ yet" — but only inside explicit, bounded stop conditions.
   epics/<slug>/      # (epics only) one instance dir PER epic — never shared
     epic.md          #   epic statement + acceptance criteria
     backlog.md       #   ordered sub-goals + status
+  prompt.md          # compiled, signed-off form of the ask (design gate output)
   goal.md            # ACTIVE goal + verifiable success criteria (design gate output)
   design.md          # architecture + ordered work breakdown (design gate output)
   state.json         # machine state — single source of truth for loop position
@@ -35,6 +36,14 @@ yet" — but only inside explicit, bounded stop conditions.
 
 Add `.loop/` to the host `.gitignore` only if the user asks; by default it is
 committed so loop history travels with the repo.
+
+**`archive/` is frozen.** A run or epic moved there is a historical snapshot:
+never edit it, never update it to match today's code, and never cite it as
+authority for current behavior. Knowledge that must stay current belongs in
+`memory/` before the archive happens — that is what the memory step at every
+stop is for. Reading an archived run to understand what a past run believed is
+fine; treating what it believed as true today is the failure the freeze
+prevents.
 
 ## state.json schema
 
@@ -85,6 +94,9 @@ approach.
 ```markdown
 # Iteration NNNN — <one-line intent>
 - **Goal criterion targeted:** <which success criterion this advances>
+- **Injected:** <what shaped this iteration's context: memory entries recalled
+  (by tag/slug), the "already tried" block, any breaker ADVISORY carried in,
+  the compiled brief — or "none">
 - **Actions:** <what was done, files touched>
 - **Delegated:** <agent> — <task> — <outcome>   (or "none")
 - **Verification:** <exact command(s) the verifier ran>
@@ -110,10 +122,23 @@ approach.
   design gate is responsible for producing them in that form.
 - A **fail (REJECT) verdict is normal** and does not stop the loop; it becomes
   the next iteration's intent — with a *different* approach.
+- **Context-visible ⟺ recorded.** Anything that reached the model and shaped
+  this iteration — a recalled memory entry, the already-tried block, a breaker
+  advisory, the compiled brief — goes on the `Injected:` line. A run whose
+  records show what was done but not what the agent was told cannot be debugged
+  afterwards: the wrong output looks inexplicable when the wrong input is
+  invisible. Recording the injection is also what makes a bad memory entry
+  traceable to the iteration it misled.
 - **"Already tried" injection**: every iteration's prompt context must start
   from `state.json.history` — list what was already tried and what failed, and
   do NOT repeat a failed approach unchanged. This is the loop's short-term
   memory between iterations.
+- **Every delegation is a composed brief.** No `Agent()` in this plugin is
+  spawned from an ad-hoc sentence: the payload is Template N from the
+  `loop-engineering:prompt-craft` skill (absolute project root, one deliverable,
+  inputs as paths, forbidden actions, output contract, stop conditions) and
+  passes that skill's six-point lint first. A subagent's context is fresh and
+  its turn is single; an omitted field is not a gap it will ask about.
 - The loop is **resumable**: on start, always read `state.json` + the last
   iteration record; never redo completed work, never trust memory of a previous
   session over the files.
@@ -145,6 +170,7 @@ a goal that is already met.
 | **Frustration** | ⚙ script | same *action* attempted 3 consecutive iterations (even with different errors) | `stuck` |
 | **No progress** | ⚙ script | 5 consecutive fails with no pass in between | `stuck` |
 | **Plateau** | ⚙ script | `criteria_passed` flat for 4 iterations despite passing verdicts | `stuck` |
+| **Advisory** | ⚙ script | any counter one short of its threshold | none — prints `ADVISORY`, exit stays `0` |
 | Verifier escalation | model | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
 | User cancel | model | user says stop | `stopped-user` |
 
@@ -152,6 +178,32 @@ No-progress is the backstop for thrashing where every attempt fails
 *differently* — five distinct errors from five distinct approaches — which
 stagnation and frustration both miss. `escalate` entries count toward none of
 the three.
+
+**Bookkeeping passes are transparent to the failure chain.** A passing iteration
+that closed no criterion (`criteria_passed` did not rise) neither counts as an
+attempt nor resets one: `fail → tidy the records → fail` still reads as two
+consecutive failures. Recording work is not progress, and it must not be able to
+launder a stuck loop by resetting the counters. The rule is derived from
+recorded state, not declared: fails are never transparent, so nothing is gained
+by labelling a failed attempt as bookkeeping, and entries written before
+`criteria_passed` existed keep their old behavior. `--context` marks such
+iterations `[bookkeeping]`, and the CONTINUE line counts them.
+
+**One counter short of a threshold prints an `ADVISORY` and exits `0`.** The loop
+gets exactly one warning it can still act on — change the approach, target a
+criterion directly, split the increment — before the breaker takes the decision
+away. Carry the advisory into the next iteration's context and record it on the
+`Injected:` line; an advisory that only appeared in a terminal changed nothing.
+An advisory never stops a run: a nudge that can halt the loop is a stop
+condition wearing a disguise, and the stop conditions are the table above.
+
+**Escalation is not a free exit.** `escalate` entries are excluded from every
+counter, which makes an unjustified ESCALATE_HUMAN the cheapest way to launder a
+stuck loop. The verifier owes a proof block — command, exact error, the retry it
+already tried, and the fact that makes the failure environmental rather than
+behavioral — and a verdict without it is a REJECT. The same applies to
+`breaker_reset_at_iteration`: set it only when the user has named what changed,
+and record that reason in the iteration record.
 
 The script handles signature normalization for you (timestamps, hex addresses,
 paths → basenames, numbers → `#`) so "the same error" means the same signature,

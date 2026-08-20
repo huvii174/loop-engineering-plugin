@@ -53,7 +53,10 @@ the interview the user will face later.
 ## Step 2 — Delegate decomposition analysis to the BA/PM agent
 
 Call `Agent(subagent_type: "loop-engineering:epic-planner", prompt: <payload>)`
-with:
+with the payload below. It is Template N with the planner's fields filled in:
+load `Skill(skill: "loop-engineering:prompt-craft")` and run its six-point lint
+before spawning, because this agent gets one turn and no way to ask you what
+the epic actually meant.
 
 ```markdown
 ## Epic

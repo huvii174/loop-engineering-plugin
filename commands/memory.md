@@ -26,7 +26,10 @@ parentheses):
   (→ `## Environment`)
 - **Dead hypotheses** — approaches abandoned, with *why*; these prevent future
   runs from re-running dead ends (→ `## What didn't work`)
-- **Decisions** — design choices made and their rationale (→ `decisions.md`)
+- **Decisions** — design choices made and their rationale, **with the
+  alternatives they beat** (→ `decisions.md`). A decision harvested without its
+  rejected alternatives is not recorded, it is asserted: write what lost, or
+  file the item as a plain fact instead.
 
 ## Step 2 — Distil, and pick the shape
 
@@ -41,7 +44,10 @@ the skill to each keeper:
 - Otherwise → a tagged one-liner `[type][area] … — why (run-id, iter N)`.
 
 Check `## Never store` before writing anything. Ground behavioral claims with
-`file:line`; cite PR numbers, not bare SHAs.
+`file:line`; cite PR numbers, not bare SHAs. Run each keeper past the skill's
+prose list before writing it: no narrated history, no rotting status note, no
+reasoning transcript, no fact without its why. Never mine `.loop/archive/` for
+material — an archived run is frozen history, not a source of current facts.
 
 ## Step 3 — Merge (never duplicate)
 
@@ -51,6 +57,15 @@ contradicts an entry, the evidence wins — update the entry, never append a
 contradiction beside it. Resolve cross-entry contradictions before anything else.
 When reality has outgrown an entry but evidence is insufficient to rewrite it,
 mark `status: stale` with a reason instead of guessing.
+
+Three rules bound the destructive outcomes. A dead end is kept only while the
+path it names is still tempting, and deleted once its premise is gone. An entry
+is never edited into a different conclusion: Replace it, or supersede it with a
+new entry that links back. A consolidation transfers every unique rationale,
+alternative, and failed attempt into the surviving entry **before** the absorbed
+one is deleted. Judge close calls against the skill's worked examples rather
+than by length or age, and name any genuinely borderline call in this run's
+output so the next pass inherits the reasoning.
 
 Then **empty both scratch surfaces** — `## Scratch (this run)` in learnings.md
 and `scratch/adhoc.md` — every note is either distilled or deleted. Ad-hoc
@@ -83,7 +98,10 @@ host already has a memory system, merge into it rather than adding a second stor
 ## Step 6 — Prune
 
 If durable one-liners exceed ~60, consolidate before adding more; past ~40,
-prefer moving narrative-shaped entries out to `solutions/`.
+prefer moving narrative-shaped entries out to `solutions/`. The budget is a
+trigger to run maintenance, **not a quota to hit**: never delete an entry
+because it was the sixty-first, and never keep a dead one because the count was
+comfortable.
 
 ## Output
 

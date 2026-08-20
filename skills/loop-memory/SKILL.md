@@ -81,8 +81,10 @@ Rules:
 - One line, imperative, **with the why attached** — a learning without a why gets
   ignored or misapplied.
 - **Tag every entry `[type][area]`** so retrieval is greppable by field
-  (`grep '\[gotcha\]\[auth\]'`) instead of by hope. Types: `env`, `gotcha`,
-  `pattern`, `dead`. Area is the module/domain in this repo's own vocabulary.
+  (`grep '\[gotcha\]\[auth\]'`) instead of by hope. The type set is **closed**:
+  `env`, `gotcha`, `pattern`, `dead`. A fifth type is a change to this skill,
+  not a choice made mid-run — an open vocabulary is a store nobody can grep.
+  Area is the module/domain in this repo's own vocabulary.
 - **Ground claims**: behavioral claims about code cite `file:line`; unverified
   claims are attributed ("per this run's conclusion…"), never stated as fact.
   Cite **PR numbers, not bare SHAs** — SHAs are rewritten by squash/rebase merges.
@@ -171,6 +173,14 @@ Records both breakdown sign-off decisions **and** per-sub-goal design-gate
 choices. A design decision that lives only in an archived `design.md` is
 effectively lost — the design gate must mirror it here.
 
+**`alternatives rejected:` is mandatory, not a nicety.** A decision recorded
+without what it beat invites the next session to re-litigate it, which is the
+exact failure this file exists to prevent: the reader cannot tell whether the
+obvious-looking alternative was weighed and lost or never considered. If nothing
+was genuinely rejected, the entry is not a decision — it is a fact, and it
+belongs in `learnings.md`. Write the alternative even when it embarrasses the
+decision; especially then.
+
 ## Maintenance — five outcomes per entry
 
 Classify every touched entry as **Keep / Update / Consolidate / Replace / Delete**:
@@ -188,10 +198,87 @@ Classify every touched entry as **Keep / Update / Consolidate / Replace / Delete
   Before deleting, check the problem domain is actually gone (code removed ≠
   problem gone).
 
+**Dead ends are kept as guardrails, not as history.** A `[dead]` line or a
+`solutions/` entry whose value is "we tried this and it failed" earns its place
+only while that path is still tempting: someone reading the current code could
+plausibly propose it again. When the premise is gone — the API it used no longer
+exists, a later decision settled the question, the subsystem was deleted — the
+entry stops preventing anything and starts costing recall budget. Delete it.
+"We might want the history" is what git is for.
+
+**Never edit an entry into a different conclusion.** An entry that reality has
+overtaken is Replaced (same topic, rewritten premise) or superseded by a new
+entry that links back to it. Rewriting a `[dead]` line into a `[pattern]` line
+destroys the record that the path was tried and failed, and the next run pays
+for it again.
+
+**Consolidation is a transfer, not a deletion.** Before removing an entry into
+another one, carry over every unique piece it holds: the rationale, the
+alternatives rejected, the consequence, each failed attempt with why it failed,
+and any named gap. An entry absorbed without its failed attempts leaves the
+merged record looking more confident than the evidence was.
+
+**`.loop/archive/` is frozen and is not memory.** Never mine an archived run for
+current facts, never edit one, and never cite one as authority. If knowledge in
+a run still matters, it is promoted into `memory/` at that run's stop — that is
+the whole point of the memory step firing on every stop, success or not.
+
 Cross-entry **contradictions are more urgent than staleness** — they actively
 mislead. Resolve them first. Refresh order matters: one-liners and `solutions/`
 first, epic rollups second — a stale learning makes an epic retro look more valid
 than it is.
+
+## Calibration — worked examples, because the rules alone do not decide
+
+Retention rules leave the hard cases open, and the hard cases are most of them.
+These examples set the bar. **Length and age are discovery aids, never
+criteria**: grep the longest entries first because they are where dead weight
+hides, then judge each one on whether it would change a future session's
+behavior. A 14-word line can be load-bearing and a 300-word entry can be inert.
+
+Keep:
+
+- `[env][test] run \`pnpm test --filter api\`, not the full suite — full suite needs docker, times out` (17 words). An environment fact no file in the repo states, and the next run wastes ten minutes without it.
+- `[gotcha][auth] session cookies need sameSite: lax in dev — Safari drops them otherwise` (13 words). A boundary condition invisible from reading the code.
+- `solutions/webhook-retry-storm.md` (410 words). Its "When this applies" section discriminates it from a timeout bug that looks identical at the symptom level; that discrimination is the whole value.
+- `[dead][cache] resolver-layer caching — invalidation needs a cross-tenant event the system doesn't emit` (14 words). Keep while the resolver exists and caching there still looks attractive: it is preventing a real, tempting mistake.
+
+Delete:
+
+- `[pattern][api] prefer clear names` (5 words). True everywhere, actionable nowhere, and it matches every grep for `[pattern][api]` while carrying nothing.
+- `[env][build] the project runs on Node 22` (8 words). The `engines` field already says so: one home per fact, and the file that ships with the code wins.
+- `solutions/legacy-import-crash.md` (600 words). The module it describes was deleted two goals ago; the problem domain is gone, not just the code.
+- `[dead][ui] tried the old modal API` (7 words). That API no longer exists, so the entry prevents nothing.
+
+Consolidate:
+
+- Three `[gotcha][auth]` lines describing the same cookie behavior from three runs. Apply the Retrieval-Value Test: a future search wants one entry, not three near-duplicates that will drift apart and start contradicting each other.
+
+**Do not prune toward a quota.** The ~60-line budget is a signal to run
+maintenance, not a target to reach by deleting whatever is line 61. Classify
+every entry in scope, group analogous ones under one principle, and record
+genuinely borderline calls in the run's memory summary so the next maintenance
+pass inherits the reasoning instead of re-deriving it.
+
+## Prose that survives recall
+
+Memory is read under a budget, by a reader who will act on it. Hunt these in
+every entry before it is written:
+
+- The same fact in two entries. Keep one home; the other links or dies.
+- Narrated history: "previously we used X", "this used to fail", "after the
+  refactor". State the current fact; the run id already carries the when.
+- Status annotations that rot: "currently broken", "being fixed next run",
+  "TODO". Status belongs in `state.json` and the backlog, not in memory.
+- The reasoning transcript instead of the conclusion. Keep what was learned and
+  the evidence for it; delete the path used to derive it.
+- A rationale repeated beside every sibling entry rather than stated once at the
+  entry that owns it.
+- Emphasis on everything: when three words per line are bold, nothing is.
+- Future tense in a durable entry ("we should", "we will move to"). A durable
+  entry describes what is; an intention belongs in the backlog.
+- A fact with no why attached. It will be misapplied by the first session that
+  meets a case the original author would have recognised as different.
 
 ## Promotion to host project memory
 
