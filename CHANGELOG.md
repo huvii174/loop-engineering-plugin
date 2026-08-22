@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.2 — 2026-08-22
+
+**The README's mermaid is replaced by the editorial diagrams.** All five embeds
+land through `<picture>` + `prefers-color-scheme`, so dark-theme readers get the
+dark variant and the light `<img>` is the fallback everywhere else.
+
+- The three inline mermaid blocks (`## The loop`, `## Epic flow`,
+  `## Memory compounding`) are replaced in place by their SVGs.
+- `### The breaker is code, not a prompt` and `## Prompt compilation` gain a
+  diagram they never had.
+- README prose is byte-identical to before: the sha256 of its diagram-free view,
+  anchored before the work started, is unchanged, and no heading moved.
+
 ## 0.13.1 — 2026-08-22
 
 **Diagram assets.** Five editorial diagrams for the plugin's core parts — loop

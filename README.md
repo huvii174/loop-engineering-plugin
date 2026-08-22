@@ -64,23 +64,10 @@ install. When in doubt: restart.
 
 ## The loop
 
-```mermaid
-flowchart TD
-    G([Raw goal]) --> D["/loop-engineering:design<br/>Interview gate — ask until<br/>confidence ≥ 95%<br/>criteria must be measurable"]
-    D -->|"prompt.md (compiled ask) + goal.md (Done when: … / Evidence: …)<br/>+ design.md + state.json"| P[Plan next increment<br/>+ inject 'already tried' list<br/>+ any breaker advisory]
-    subgraph LOOP["/loop-engineering:loop — goal-based loop"]
-        P --> A[Implementer acts —<br/>one verifiable increment]
-        A --> V{loop-verifier agent<br/>fresh context, reject-by-default<br/>runs the checks itself}
-        V -- "REJECT (normal!)" --> R[Record iteration<br/>+ inline learning]
-        V -- "APPROVE, criteria remain" --> R
-        V -- ESCALATE_HUMAN --> H([Ask the user])
-        R --> S{Circuit breaker:<br/>goal met · max iters · stagnation ·<br/>frustration · no-progress · plateau · cancel<br/>one short of a threshold → advisory}
-        S -- continue --> P
-    end
-    S -- stop --> M["/loop-engineering:memory<br/>Compound learnings + dead hypotheses<br/>→ .loop/memory + CLAUDE.md<br/>+ post-run critique (1 change)"]
-    M --> Z([Run summary +<br/>final visualization])
-    Z -.->|next run starts smarter| D
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/loop-lifecycle-dark.svg">
+  <img alt="How one loop iteration runs" src="docs/diagrams/loop-lifecycle.svg">
+</picture>
 
 Design choices grounded in the sources: the exit is gated by a **separate
 fresh-context verifier**, not the implementer's own judgment (the blog's core
@@ -91,6 +78,11 @@ cap, and failed iterations feed an "already tried — do not repeat" list into t
 next one.
 
 ### The breaker is code, not a prompt
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/circuit-breaker-dark.svg">
+  <img alt="The circuit breaker decides, in code" src="docs/diagrams/circuit-breaker.svg">
+</picture>
 
 `scripts/loop-breaker.mjs` (zero dependencies, runs on the Node that ships with
 Claude Code) reads `.loop/state.json` and decides deterministically:
@@ -180,18 +172,10 @@ loop). Verify with `node scripts/test-hooks.mjs` (36 checks).
 
 ## Epic flow (big goals)
 
-```mermaid
-flowchart LR
-    E([Epic]) --> B["breakdown
-95% on WHAT + order"]
-    B --> K["backlog.md
-vertical slices,
-seed Done-when each"]
-    K --> D1["design #1
-95% on HOW"] --> L1["loop #1"] --> U1["backlog row → done"]
-    U1 --> D2["design #2"] --> L2["loop #2"] --> U2[…]
-    U2 --> Z([epic criteria met])
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/epic-flow-dark.svg">
+  <img alt="An epic, from statement to retro" src="docs/diagrams/epic-flow.svg">
+</picture>
 
 Sub-goals run sequentially against one `.loop/` by default; truly independent
 items can run in parallel git worktrees (one `.loop/` each).
@@ -203,18 +187,10 @@ Memory combines two lineages: **tiering and promotion governance** from
 **per-entry craft, greppable retrieval and garbage collection** from
 compound-engineering.
 
-```mermaid
-flowchart LR
-    S[scratch — written mid-iteration,<br/>cheap and unreviewed] --> Di[Distil at run end<br/>+ escalation rule]
-    Di -->|one line is enough| L[learnings.md<br/>type/area tagged, budgeted]
-    Di -->|">2 iters · surprise root cause ·<br/>needs 'when it applies'"| So[solutions/slug.md<br/>6-section entry, typed frontmatter]
-    Di --> E[epics/epic.md<br/>per-item lesson + slice verdict<br/>+ epic retro]
-    L --> G{promotion gate:<br/>user or verifier}
-    So --> G
-    G --> C[host CLAUDE.md<br/>## Learnings]
-    E --> B[next /breakdown reads the retros —<br/>epic-planner finally learns]
-    L --> Rd[Recall under budget: grep by tag/field,<br/>max 5 entries per iteration]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/memory-compounding-dark.svg">
+  <img alt="Every run leaves the store smarter" src="docs/diagrams/memory-compounding.svg">
+</picture>
 
 **One size does not fit all knowledge.** A one-liner is right when the action
 *is* the knowledge ("run `pnpm test --filter api`, not the full suite — needs
@@ -269,6 +245,11 @@ and remaining ambiguities after every round of questions. If 95% is unreachable,
 it lists explicit assumptions and gets your sign-off instead of guessing silently.
 
 ## Prompt compilation (what happens after the 95% gate)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/prompt-compilation-dark.svg">
+  <img alt="From a raw ask to a briefed agent" src="docs/diagrams/prompt-compilation.svg">
+</picture>
 
 A goal can survive the interview and still reach the model in a shape that
 loses half of it. The `prompt-craft` skill closes that gap, and it does exactly
