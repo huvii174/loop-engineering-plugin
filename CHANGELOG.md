@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13.1 — 2026-08-22
+
+**Diagram assets.** Five editorial diagrams for the plugin's core parts — loop
+lifecycle, circuit breaker, memory compounding, epic flow, prompt compilation —
+authored as self-contained HTML sources and exported to SVG + PNG, each in a
+light and a dark variant, under `docs/diagrams/`. Not yet referenced from
+`README.md`; the inline mermaid blocks stay in place until the embeds land.
+
+- `.loop/` is now ignored: it is per-project run state created by the plugin,
+  and this repo carries its own dogfood run.
+
 ## 0.13.0 — 2026-08-21
 
 **Honest counters, matched evidence, memory with a lifecycle.** Seven changes

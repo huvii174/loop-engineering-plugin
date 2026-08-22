@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" role="img" aria-labelledby="epic-flow-dark-title epic-flow-dark-desc" xmlns="http://www.w3.org/2000/svg">
+      <title id="epic-flow-dark-title">An epic, from statement to retro</title>
+      <desc id="epic-flow-dark-desc">Process diagram of the epic flow across four actors: the user states and signs off the epic, epic-planner proposes the backlog, each item runs the full design and loop gates, and every item writes a rollup row before the final retro.</desc>
+      <defs><style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap');</style>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bfc0c0"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#f08a59"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6a95d8"/></marker>
+      </defs>
+    <rect width="100%" height="100%" fill="#2d3142"/>
+    <text x="40" y="44" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">PROCESS · LOOP-ENGINEERING</text>
+    <rect x="0" y="56" width="1280" height="136" fill="#f5f5f5" fill-opacity="0.018"/>
+    <line x1="0" y1="56" x2="1280" y2="56" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <text x="100" y="120" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.18em">USER</text>
+    <line x1="0" y1="192" x2="1280" y2="192" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <text x="100" y="256" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.18em">PLANNER</text>
+    <rect x="0" y="328" width="1280" height="136" fill="#f5f5f5" fill-opacity="0.018"/>
+    <line x1="0" y1="328" x2="1280" y2="328" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <text x="100" y="392" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.18em">DESIGN</text>
+    <text x="100" y="408" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.18em">+ LOOP</text>
+    <line x1="0" y1="464" x2="1280" y2="464" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <text x="100" y="528" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.18em">MEMORY</text>
+    <line x1="0" y1="600" x2="1280" y2="600" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <line x1="200" y1="56" x2="200" y2="600" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <rect x="288" y="8" width="32" height="16" rx="2" fill="none" stroke="rgba(191,192,192,0.25)" stroke-width="0.8"/>
+    <text x="304" y="20" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">01</text>
+    <text x="304" y="44" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">STATE</text>
+    <rect x="496" y="8" width="32" height="16" rx="2" fill="none" stroke="rgba(191,192,192,0.25)" stroke-width="0.8"/>
+    <text x="512" y="20" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">02</text>
+    <text x="512" y="44" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">SPLIT</text>
+    <rect x="704" y="8" width="32" height="16" rx="2" fill="none" stroke="rgba(191,192,192,0.25)" stroke-width="0.8"/>
+    <text x="720" y="20" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">03</text>
+    <text x="720" y="44" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">SIGN-OFF</text>
+    <rect x="912" y="8" width="32" height="16" rx="2" fill="#f08a59" stroke="#f08a59" stroke-width="0.8"/>
+    <text x="928" y="20" fill="#2d3142" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">04</text>
+    <text x="928" y="44" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">PER ITEM</text>
+    <rect x="1120" y="8" width="32" height="16" rx="2" fill="none" stroke="rgba(191,192,192,0.25)" stroke-width="0.8"/>
+    <text x="1136" y="20" fill="#bfc0c0" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">05</text>
+    <text x="1136" y="44" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CLOSE</text>
+    <path d="M 392 124 L 400 124 Q 408 124 408 132 L 408 252 Q 408 260 416 260 L 424 260" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="432" y="184" width="48" height="16" rx="2" fill="#2d3142"/>
+    <text x="456" y="196" fill="#8e98ac" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EPIC</text>
+    <path d="M 600 260 L 608 260 Q 616 260 616 252 L 616 132 Q 616 124 624 124 L 632 124" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="640" y="184" width="68" height="16" rx="2" fill="#2d3142"/>
+    <text x="672" y="196" fill="#8e98ac" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">BACKLOG</text>
+    <path d="M 808 124 L 816 124 Q 824 124 824 132 L 824 388 Q 824 396 832 396 L 840 396" fill="none" stroke="#f08a59" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+    <rect x="848" y="320" width="32" height="16" rx="2" fill="#2d3142"/>
+    <text x="864" y="332" fill="#8e98ac" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">GO</text>
+    <path d="M 904 444 L 904 484" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="840" y="456" width="60" height="16" rx="2" fill="#2d3142"/>
+    <text x="868" y="468" fill="#8e98ac" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TAUGHT</text>
+    <path d="M 952 484 L 952 444" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="960" y="456" width="84" height="16" rx="2" fill="#2d3142"/>
+    <text x="1004" y="468" fill="#8e98ac" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">NEXT ITEM</text>
+    <path d="M 1016 532 L 1048 532" fill="none" stroke="#bfc0c0" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="216" y="76" width="176" height="96" rx="6" fill="#2d3142"/>
+    <rect x="216" y="76" width="176" height="96" rx="6" fill="#2d3142" stroke="#f5f5f5" stroke-width="1"/>
+    <text x="304" y="116" fill="#f5f5f5" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Epic stated</text>
+    <text x="304" y="140" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">outcome · limits</text>
+    <rect x="228" y="88" width="40" height="16" rx="2" fill="none" stroke="#f5f5f5" stroke-opacity="0.40" stroke-width="0.8"/>
+    <text x="248" y="100" fill="#f5f5f5" fill-opacity="0.8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YOU</text>
+    <rect x="424" y="212" width="176" height="96" rx="6" fill="#2d3142"/>
+    <rect x="424" y="212" width="176" height="96" rx="6" fill="#2d3142" stroke="#f5f5f5" stroke-width="1"/>
+    <text x="512" y="252" fill="#f5f5f5" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">epic-planner</text>
+    <text x="512" y="276" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">proposes backlog</text>
+    <rect x="436" y="224" width="40" height="16" rx="2" fill="none" stroke="#f5f5f5" stroke-opacity="0.40" stroke-width="0.8"/>
+    <text x="456" y="236" fill="#f5f5f5" fill-opacity="0.8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BA</text>
+    <rect x="632" y="76" width="176" height="96" rx="6" fill="#2d3142"/>
+    <rect x="632" y="76" width="176" height="96" rx="6" fill="#2d3142" stroke="#f5f5f5" stroke-width="1"/>
+    <text x="720" y="116" fill="#f5f5f5" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Sign-off</text>
+    <text x="720" y="140" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">reorder · split</text>
+    <rect x="644" y="88" width="40" height="16" rx="2" fill="none" stroke="#f5f5f5" stroke-opacity="0.40" stroke-width="0.8"/>
+    <text x="664" y="100" fill="#f5f5f5" fill-opacity="0.8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YOU</text>
+    <rect x="840" y="348" width="176" height="96" rx="6" fill="#2d3142"/>
+    <rect x="840" y="348" width="176" height="96" rx="6" fill="rgba(240,138,89,0.10)" stroke="#f08a59" stroke-width="1"/>
+    <text x="928" y="388" fill="#f5f5f5" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">design → loop</text>
+    <text x="928" y="412" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">every gate runs</text>
+    <rect x="852" y="360" width="40" height="16" rx="2" fill="none" stroke="#f08a59" stroke-opacity="0.40" stroke-width="0.8"/>
+    <text x="872" y="372" fill="#f08a59" fill-opacity="0.8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RUN</text>
+    <rect x="840" y="484" width="176" height="96" rx="6" fill="#2d3142"/>
+    <rect x="840" y="484" width="176" height="96" rx="6" fill="#2d3142" stroke="#f5f5f5" stroke-width="1"/>
+    <text x="928" y="524" fill="#f5f5f5" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Rollup row</text>
+    <text x="928" y="548" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">what it taught</text>
+    <rect x="852" y="496" width="40" height="16" rx="2" fill="none" stroke="#f5f5f5" stroke-opacity="0.40" stroke-width="0.8"/>
+    <text x="872" y="508" fill="#f5f5f5" fill-opacity="0.8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MEM</text>
+    <rect x="1048" y="484" width="176" height="96" rx="6" fill="#2d3142"/>
+    <rect x="1048" y="484" width="176" height="96" rx="6" fill="#2d3142" stroke="#f5f5f5" stroke-width="1"/>
+    <text x="1136" y="524" fill="#f5f5f5" font-size="16" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Epic retro</text>
+    <text x="1136" y="548" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" text-anchor="middle">slice verdict</text>
+    <rect x="1060" y="496" width="40" height="16" rx="2" fill="none" stroke="#f5f5f5" stroke-opacity="0.40" stroke-width="0.8"/>
+    <text x="1080" y="508" fill="#f5f5f5" fill-opacity="0.8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MEM</text>
+    <line x1="40" y1="600" x2="1240" y2="600" stroke="rgba(245,245,245,0.12)" stroke-width="0.8"/>
+    <text x="40" y="624" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LANE · WHO ACTS</text>
+    <text x="340" y="624" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" letter-spacing="0.14em">COLUMN · STAGE</text>
+    <text x="640" y="624" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" letter-spacing="0.14em">CORAL · WHERE GATES RUN</text>
+    <text x="940" y="624" fill="#bfc0c0" font-size="12" font-family="'Geist Mono', monospace" letter-spacing="0.14em">RETURN · NEXT ITEM</text>
+    </svg>
