@@ -1,6 +1,6 @@
 ---
 name: loop-review
-description: Review gate run after all success criteria pass and before a goal is marked done — parallel fresh-context reviewers per dimension (correctness, security, test adequacy), adversarial refutation of findings, confirmed findings fed back into the loop as normal iterations. Load when the loop reaches "criteria met" or when running the review gate.
+description: Review gate run after all success criteria pass and before a goal is marked done — parallel fresh-context reviewers per dimension (correctness, spec fidelity and its scope-creep check, security, test adequacy), adversarial refutation of findings, per-dimension reporting with no cross-dimension reranking, confirmed findings fed back into the loop as normal iterations. Load when the loop reaches "criteria met" or when running the review gate.
 ---
 
 # Loop Review — the Review Gate
@@ -19,19 +19,20 @@ Build the goal's accumulated diff: files created/changed across all iterations
 (from the iteration records' file lists; `git diff` when the work is committed).
 Reviews read the real files, not the records' summaries.
 
-## Step 2 — Select dimensions (rules, not vibes; cap 4)
+## Step 2 — Select dimensions (rules, not vibes; cap 5)
 
 | Dimension | Runs when | Detection |
 |---|---|---|
 | **Correctness & maintainability** | always | — |
+| **Spec fidelity** | tier ≥ `small` and `.loop/prompt.md` exists | — |
 | **Security** | diff touches a trust boundary | grep the diff for: auth/session/token/crypto, input parsing (query/body/params/deserialize), `exec`/`spawn`/shell, file paths from input, network calls, SQL/query building, env/secrets access |
 | **Test adequacy** | the goal changed behavior (new/changed logic, not pure docs/config) | any non-test source file changed |
 | **Simplification** | diff > ~300 lines or > 5 files | line/file count |
 
 The goal's **tier** caps the gate (routing table in the loop-engine skill):
-`trivial` runs correctness only; `small` runs correctness + security-if-triggered;
-`medium`/`large` run all triggered dimensions, and `large` always includes
-simplification. **Precedence: the tier cap wins over a dimension's trigger** —
+`trivial` runs correctness only; `small` adds spec fidelity and
+security-if-triggered; `medium`/`large` run all triggered dimensions, and
+`large` always includes simplification. **Precedence: the tier cap wins over a dimension's trigger** —
 a `small` goal whose diff changes behavior still skips test-adequacy. That is a
 deliberate cost call, not an oversight; when it feels wrong for a specific goal,
 the fix is re-tiering the goal (round up), never silently running the extra
@@ -66,6 +67,16 @@ error paths that swallow or mis-handle failures, resource leaks, off-by-one and
 boundary conditions, dead code, misleading names, duplication that will drift.
 NOT style preferences.
 
+**Spec fidelity charter** — does the diff deliver the ask, and only the ask?
+Read `.loop/prompt.md` (the compiled, signed-off ask) and `.loop/goal.md`, then
+report: acceptance criteria missing or only partly delivered; **behavior in the
+diff nobody asked for** — scope creep, which a criterion-by-criterion verifier
+structurally cannot see, because it only ever looks at what a criterion claims;
+and criteria that look delivered but whose implementation contradicts the brief.
+Quote the `prompt.md` or `goal.md` line behind every finding. Signed-off
+assumptions and `Out of scope` bind here too: work that contradicts one is a
+finding, not a bonus.
+
 **Security charter** — trust boundaries first: where does external input enter,
 and is it validated *at the boundary*? Injection (SQL/command/path), authn/authz
 gaps on new surfaces, secrets in code or logs, unsafe deserialization, missing
@@ -93,6 +104,14 @@ stdlib or existing project utilities.
 
 Max 5 findings per reviewer, ranked. A reviewer with nothing real to report says
 so — a padded findings list poisons the refutation stage.
+
+**Report per dimension, and never merge the dimensions into one ranked list.** A
+goal can pass correctness and fail spec fidelity (clean code, wrong feature), or
+the reverse (right feature, unsafe code). Ranking findings across dimensions
+lets a clean one mask a dirty one, which is exactly the masking that fanning out
+separately exists to prevent. Name the worst finding *within* each dimension and
+leave it there; the severity ordering is per-reviewer, and it stays that way
+through Step 4, Step 5, and the summary.
 
 ## Step 4 — Refute before you fix
 

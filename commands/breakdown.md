@@ -32,23 +32,25 @@ Read, in this order (contract: `Skill(skill: "loop-engineering:loop-memory")`):
 Never ask the user a question these already answer — cite the entry and confirm
 it still holds instead.
 
-## Step 1 — Epic-level interview (the 95% rule, scoped to WHAT, not HOW)
+## Step 1 — The interview (WHAT-scoped)
 
-Interview the user in rounds of 2–4 questions (most decision-blocking first),
-until you can state **≥95% confidence** that you understand the epic well enough
-to decompose it correctly. After every round, state your confidence % and the
-ambiguities keeping it below threshold. Below 95% → keep interviewing; if it
-can't be reached after ~5 rounds, list explicit numbered assumptions and get
-sign-off.
+Run the interview method: `Skill(skill: "loop-engineering:interview")` — design
+tree, frontier rounds carrying a recommended answer per question, agent-side
+fact-finding, the two-part gate (frontier empty **and** min(dimensions) ≥ 95%),
+and the numbered-assumption escape hatch. This command supplies:
 
-Epic-level questions cover: the business outcome (what changes for whom when
-this ships?), epic-level acceptance criteria (measurable at the epic level),
-hard scope boundaries (in/out), priorities and what ships first if time runs
-out, deadline/budget constraints, and known risks. Push for exact values.
+- **Scope: WHAT, never HOW.** Architecture, schema and library questions belong
+  to the per-sub-goal design gate; asking them here duplicates an interview the
+  user will face again later, and the decomposition does not need the answers.
+- **Seed dimensions**: **business outcome** (what changes for whom when this
+  ships?), **epic acceptance criteria** (measurable at the epic level), **hard
+  scope boundaries** (in/out), **priorities** (what ships first if time runs
+  out), **constraints** (deadline, budget), **known risks**.
+- **Prior answers**: everything Step 0 recalled, epic rollups first.
 
-**Do NOT ask implementation questions** (architecture, schema, libraries) —
-that ambiguity is the per-sub-goal design gate's job. Asking it here duplicates
-the interview the user will face later.
+Push for exact values, and read the gate as the minimum it is: an epic 99% clear
+on outcome and 70% clear on boundaries is a 70% epic, and the boundary is what
+the backlog is about to be cut along.
 
 ## Step 2 — Delegate decomposition analysis to the BA/PM agent
 

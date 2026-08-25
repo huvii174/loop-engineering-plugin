@@ -225,7 +225,7 @@ self-assessed at the design gate for standalone goals — when in doubt, round u
 | Tier | Fits | Design gate | Tenth-man | Review gate |
 |---|---|---|---|---|
 | `trivial` | config change, copy edit, one-liner | abbreviated (confirm criteria only) | skip (visible) | correctness only |
-| `small` | single-file feature/fix | full | skip if its conditions hold | correctness (+security if triggered) |
+| `small` | single-file feature/fix | full | skip if its conditions hold | correctness + spec fidelity (+security if triggered) |
 | `medium` | multi-file feature | full | full | all triggered dimensions |
 | `large` | architectural / cross-cutting | full | full | all triggered dimensions + simplification always |
 

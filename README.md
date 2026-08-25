@@ -20,6 +20,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | Kind | Name | Job |
 |---|---|---|
 | command | `breakdown` · `run` · `design` · `loop` · `status` · `memory` | the six entry points (table below) |
+| skill | `interview` | the questioning method: design tree, frontier rounds, the two-part gate, the escape hatch |
 | skill | `loop-engine` | `.loop/` state contract, iteration record format, breaker semantics, tier routing |
 | skill | `loop-memory` | three memory shapes, promotion gate, entry lifecycle, recall budget, calibration examples |
 | skill | `loop-review` | the review gate: parallel fresh-context reviewers, adversarial refutation |
@@ -139,10 +140,10 @@ loop). Verify with `node scripts/test-hooks.mjs` (36 checks).
 
 | Command | What it does |
 |---|---|
-| `/loop-engineering:breakdown "<epic>"` | BA/PM gate for big goals: epic-level 95%-confidence interview (WHAT/why/order — never implementation), then the `epic-planner` agent proposes vertical-slice sub-goals with seed `Done when:` lines, dependencies, and risk-first ordering; you sign off; writes `.loop/epics/<slug>/epic.md` + `backlog.md` (one instance dir per epic — epics never overwrite each other; `.loop/active-epic` points at the one in play, and closed epics are archived while their knowledge rollup in `.loop/memory/epics/` lives on). Each sub-goal then goes through the design gate one at a time. |
+| `/loop-engineering:breakdown "<epic>"` | BA/PM gate for big goals: epic-level interview (WHAT/why/order — never implementation) run to the same two-part gate as `design`, then the `epic-planner` agent proposes vertical-slice sub-goals with seed `Done when:` lines, dependencies, and risk-first ordering; you sign off; writes `.loop/epics/<slug>/epic.md` + `backlog.md` (one instance dir per epic — epics never overwrite each other; `.loop/active-epic` points at the one in play, and closed epics are archived while their knowledge rollup in `.loop/memory/epics/` lives on). Each sub-goal then goes through the design gate one at a time. |
 | `/loop-engineering:run [slug] [--hands-off]` | Epic runner: executes the signed-off backlog end-to-end in dependency order — no more typing `design` per item. Front-loads every interview in a batched pre-flight (an autonomous run must never count on asking mid-flight), then drives each item through the full design→loop→memory pipeline with every gate intact. One `stuck` item stops the runner; `--hands-off` trades questions for explicit assumptions + mandatory tenth-man on every item. Parallelism is opt-in and worktree-only. |
-| `/loop-engineering:design "<goal>"` | Interview-gated design: asks targeted questions round by round, stating its confidence (%) after each. Once confidence ≥ 95% (or you sign off its explicit assumptions) it first **compiles your ask** into `.loop/prompt.md` for a one-line sign-off, then writes `.loop/goal.md` + `.loop/design.md`. Reads memory first so it never re-asks answered questions. The finished design then faces the **tenth-man `plan-critic`** — a fresh-context agent obliged to assume the signed-off plan is wrong and attack it with evidence (max 2 revise rounds; approvals carry the surviving dissent on record; trivial designs skip it visibly). |
-| `/loop-engineering:loop [max]` | Runs the goal-based loop: one small verifiable increment per iteration, evidence-based verification against the success criteria, append-only iteration records, resumable from `.loop/state.json`. Fails don't stop it — bounded stop conditions do. When the last criterion passes, a **review gate** fans out parallel fresh-context reviewers (correctness always; security / test-adequacy / simplification only when their triggers fire), refutes findings before believing them, and feeds confirmed ones back in as normal iterations — only a cleared gate writes `done`. |
+| `/loop-engineering:design "<goal>"` | Interview-gated design: maps the ask as a design tree and asks the whole **frontier** each round — every question numbered, each carrying its recommended answer — while facts it can look up itself go to a subagent instead of to you. Once the frontier is empty **and** min-dimension confidence ≥ 95% (or you sign off its explicit assumptions) it first **compiles your ask** into `.loop/prompt.md` for a one-line sign-off, then writes `.loop/goal.md` + `.loop/design.md`. Reads memory first so it never re-asks answered questions. The finished design then faces the **tenth-man `plan-critic`** — a fresh-context agent obliged to assume the signed-off plan is wrong and attack it with evidence (max 2 revise rounds; approvals carry the surviving dissent on record; trivial designs skip it visibly). |
+| `/loop-engineering:loop [max]` | Runs the goal-based loop: one small verifiable increment per iteration, evidence-based verification against the success criteria, append-only iteration records, resumable from `.loop/state.json`. Fails don't stop it — bounded stop conditions do. An increment that **fixes** something runs the defect protocol first: one command that goes red on this defect, already run once, before any theory. When the last criterion passes, a **review gate** fans out parallel fresh-context reviewers (correctness always; spec fidelity, security, test-adequacy and simplification when their triggers fire), refutes findings before believing them, reports per dimension without reranking across them, and feeds confirmed ones back in as normal iterations — only a cleared gate writes `done`. |
 | `/loop-engineering:status` | Read-only dashboard: mermaid pipeline with current position, iteration timeline, success-criteria checklist with evidence, delegated agents, breaker counters with any standing advisory, next action. |
 | `/loop-engineering:memory` | Compounding step — the loop performs the same procedure inline at every stop: harvest → distill → merge learnings into `.loop/memory/`, promote repo-wide facts into the host `CLAUDE.md`, prune to keep memory readable. |
 
@@ -236,13 +237,24 @@ and what makes the failure environmental — because escalate entries are exclud
 from the breaker's counters, and an escalation nobody has to justify is the
 cheapest way to launder a stuck loop.
 
-## Design-gate prompt (the 95% rule)
+## The interview gate (frontier + the 95% rule)
 
-The design command will not produce a design until it can state ≥95% confidence
-that it understands the goal, constraints, success criteria, and edge cases well
-enough to complete the goal correctly — and it must show its confidence estimate
-and remaining ambiguities after every round of questions. If 95% is unreachable,
-it lists explicit assumptions and gets your sign-off instead of guessing silently.
+`design` and `breakdown` share one questioning method (the `interview` skill).
+It maps the ask as a **design tree** — every decision branching into the ones
+hanging off it — and asks the **frontier** each round: every question whose
+prerequisites are already settled, so nothing is answered on top of a guess
+about a question still open. Batch size follows that dependency rather than a
+cap, because the scarce resource is your round-trips. Every question carries the
+model's recommended answer, so a round you agree with closes in one line. Facts
+it could look up itself (what the code does today, what a config holds) go to a
+subagent rather than to you; only the questions downstream of that lookup wait.
+
+The gate has two parts and needs both: the **frontier is empty** (structural, and
+you can read the rounds back and say "you never asked about X") **and**
+**min(dimensions) ≥ 95%** (depth — the minimum, never the average, so 99% on
+scope cannot hide 70% on edge cases). If the gate is unreachable after ~5 rounds,
+or you say "just go", it lists numbered assumptions with their defaults and gets
+your sign-off instead of guessing silently.
 
 ## Prompt compilation (what happens after the 95% gate)
 

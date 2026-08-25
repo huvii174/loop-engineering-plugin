@@ -11,7 +11,7 @@ inside `/loop-engineering:*`, and no third one.
 
 | Job | When | Output |
 |---|---|---|
-| Compile the ask | design gate, right after `min(dimensions) ≥ 95%` | `.loop/prompt.md` (Template O) |
+| Compile the ask | design gate, right after the interview gate clears | `.loop/prompt.md` (Template O) |
 | Compose a brief | before every `Agent()` spawn | the spawn payload (Template N) |
 
 Neither job may invent scope. Compilation restates what the interview settled,
@@ -26,8 +26,9 @@ rewritten around this plugin's gates.
 
 ## Hard rules
 
-1. Never compile before the gate. Below 95% on any dimension, the answer is
-   another interview round, not a better-worded prompt.
+1. Never compile before the gate. With the frontier still open, or any
+   dimension below 95%, the answer is another interview round rather than a
+   better-worded prompt.
 2. Never add a requirement the user did not state. Every line of the compiled
    brief traces to an interview answer, a memory entry, or a signed-off
    assumption. Anything else gets deleted.

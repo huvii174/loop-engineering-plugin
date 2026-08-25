@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.14.0 — 2026-08-25
+
+**Four ideas adapted from [mattpocock/skills](https://github.com/mattpocock/skills).**
+
+- **`skills/interview/` — one questioning method, two callers.** The interview
+  doctrine had been copy-pasted into `design.md` and `breakdown.md`, and the
+  copies had drifted: `design` required the MINIMUM across dimensions and
+  `breakdown` asked for a single blended confidence %, the exact thing `design`
+  forbids. Both now call the skill and supply only their own scope (HOW vs WHAT),
+  seed dimensions, and recalled answers.
+  - The state is a **design tree**, not a fixed taxonomy: seeds plant the first
+    branches, and the tree grows out of answers, so a subtree that fits no
+    bucket can no longer go unvisited behind five green dimensions.
+  - Rounds ask the **whole frontier**, sized by dependency rather than a 2–4 cap,
+    and a question depending on one still open in this round is deferred — that
+    pairing used to buy an answer conditioned on an unstated guess.
+  - Every question carries a **recommended answer**, turning an open question
+    into a review task and forcing the model to hold a position.
+  - **Facts are the agent's job**: an environment lookup is dispatched to a
+    subagent as an unsettled node in the same tree, so only the questions
+    downstream of it wait.
+  - The gate is now two-part: **frontier empty AND min(dimensions) ≥ 95%**. The
+    ~5-round numbered-assumption escape hatch is unchanged.
+  - The text round format (`❓ Q1 … ➡️ Recommend: …`) gives the delegated path,
+    where `AskUserQuestion` is unavailable, a defined shape for the first time.
+
+- **`loop`: defect increments make it red before they theorise.** A fix-shaped
+  increment — a verifier REJECT, a confirmed review finding, a defect the goal
+  names — now starts by building one command that goes red on *that* defect
+  (ten construction routes, ranked), already run once, and red-capable /
+  deterministic / fast / agent-runnable. Then minimise until every remaining
+  element is load-bearing, rank 3–5 falsifiable hypotheses before testing any,
+  probe one variable at a time with `[DEBUG-xxxx]`-tagged logs so cleanup is one
+  grep, and close only once the command goes green on the un-minimised scenario.
+
+- **Review gate: a spec-fidelity dimension, and no reranking across dimensions.**
+  A criterion-by-criterion verifier structurally cannot see work nobody asked
+  for, because it only ever looks at what a criterion claims. The new reviewer
+  reads `.loop/prompt.md` and reports missing, contradicted, and **unasked-for**
+  behaviour. It runs at tier ≥ `small`; the cap moves 4 → 5. Findings are now
+  reported per dimension and never merged into one ranked list, so a clean axis
+  cannot mask a dirty one.
+
+- **`.agents/writing-docs.md` + `CLAUDE.md` — authoring doctrine for this repo.**
+  Context pointers, the two loads, the information hierarchy, completion
+  criteria, a leading-word registry for the plugin, prompt-the-positive, and the
+  pruning passes. Reconciles with `prompt-craft`'s "NEVER over avoid" lint: ask
+  first whether the instruction can be a positive target, then make any
+  prohibition that survives the strongest one available. A first pass under it
+  flipped three soft advisories to positives and cut one duplicated rule from
+  `design.md`; the hard guardrails were kept deliberately.
+
 ## 0.13.2 — 2026-08-22
 
 **The README's mermaid is replaced by the editorial diagrams.** All five embeds

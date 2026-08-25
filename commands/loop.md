@@ -78,7 +78,9 @@ increment** from the design's work breakdown:
 
    and treat it as binding — never repeat a listed failed approach unchanged.
 2. **Act** — implement the increment. Delegate to subagents when parallelism
-   helps, but keep the increment small enough to verify. **Every delegation is
+   helps, but keep the increment small enough to verify. **When the increment is
+   a fix rather than a build** — a verifier REJECT, a confirmed review finding,
+   a defect the goal names — the defect protocol below runs first. **Every delegation is
    composed as a brief, never as a sentence:** load
    `Skill(skill: "loop-engineering:prompt-craft")` and write the spawn payload
    to Template N — absolute project root, one deliverable, inputs as paths,
@@ -129,6 +131,54 @@ increment** from the design's work breakdown:
    `(<run_id>, iter N)`. Write it raw and immediately; scratch is cheap. It gets
    distilled into the right shape (one-liner vs `solutions/` entry) at the end of
    the run — never promote a scratch note straight to a durable section.
+
+### Defect increments — make it red before you theorise
+
+An increment that fixes something starts by making the defect **red**. The one
+command that goes red on *this* defect is the whole game: with it, bisection and
+instrumentation just consume it; without it, reading code produces theories
+nobody can falsify.
+
+1. **Build a tight loop**, reaching for these in order: a failing test at the
+   seam that reaches the defect → an HTTP call against a running dev server → a
+   CLI invocation diffed against known-good output → a headless-browser script →
+   a replayed captured payload → a throwaway harness around the one code path →
+   a property/fuzz run for "sometimes wrong" → a bisection harness when it
+   appeared between two known-good states.
+
+   **Gate:** you can name one command, you have **already run it at least once**
+   (show the invocation and its output), and it is *red-capable* (asserts the
+   actual symptom, so it goes red now and green after the fix — rather than
+   merely running without erroring), *deterministic*, *fast* (seconds), and
+   *agent-runnable*. Building a theory before that command exists is the failure
+   this gate catches; the fix that follows such a theory is the wasted iteration
+   the breaker eventually counts.
+
+   Non-deterministic defects target a **higher reproduction rate**, not a clean
+   repro: loop the trigger, parallelise, narrow the timing window. A 50% flake is
+   debuggable; 1% is not. A defect you genuinely cannot make red is an
+   `ESCALATE_HUMAN`, recorded with what you tried.
+
+2. **Minimise.** Cut inputs, config and steps **one at a time**, re-running the
+   loop after each cut. Done when every remaining element is load-bearing:
+   removing any one of them turns the loop green. What survives is also the
+   regression test.
+
+3. **Rank 3–5 falsifiable hypotheses before testing any of them**, each stating
+   its prediction ("if X is the cause, changing Y makes it disappear"). One
+   hypothesis anchors the iteration on the first plausible idea; a hypothesis
+   with no prediction is a vibe, so sharpen it or drop it. Check the "already
+   tried" block first — an approach dead there is not a hypothesis.
+
+4. **Probe one variable at a time**, each probe mapped to one prediction, and
+   **tag every debug log with a unique prefix** — `[DEBUG-a4f2]` — so cleanup is
+   one grep. For a performance defect, measure a baseline and bisect instead;
+   logs answer the wrong question.
+
+5. **Fix, watch the command go green**, then re-run it against the un-minimised
+   scenario. The increment stays open while `grep -rn '\[DEBUG-'` still finds
+   anything it added, and the hypothesis that turned out right goes into the
+   iteration record — that is what stops the next run re-deriving it.
 
 ## Stop conditions (explicit — check before every iteration)
 

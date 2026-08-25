@@ -1,5 +1,5 @@
 ---
-description: Interview-gated design step — question the user until ≥95% confidence, compile the ask into .loop/prompt.md, then write .loop/goal.md and .loop/design.md
+description: Interview-gated design step — question the user until the frontier is empty and min-dimension confidence ≥95%, compile the ask into .loop/prompt.md, then write .loop/goal.md and .loop/design.md
 argument-hint: "<goal description>"
 ---
 
@@ -20,7 +20,8 @@ grep by tag/frontmatter field rather than reading whole files, and load at most
 - `.loop/memory/learnings.md` — grep `[type][area]` tags for this goal's domain
 - `.loop/memory/solutions/*.md` — grep frontmatter (`area:`, `root_cause:`) for
   related solved problems; skip entries marked `status: stale`
-- `.loop/memory/decisions.md` — prior decisions; don't re-litigate them
+- `.loop/memory/decisions.md` — prior decisions; treat them as settled and
+  confirm they still hold
 - `.loop/memory/epics/*.md` — if this goal is a backlog item, read that epic's
   rollup for what earlier sub-goals already discovered
 - Host project memory: `CLAUDE.md`, `AGENTS.md`, `.claude/rules/`
@@ -29,46 +30,36 @@ Never ask the user a question whose answer is already recorded there. Cite the
 memory entry instead and confirm it still holds. Memory is supplementary — if it
 conflicts with the current code, the code wins and the memory gets fixed.
 
-## Step 1 — Confidence-gated interview
+## Step 1 — The interview (HOW-scoped)
 
-Interview the user iteratively until you reach the confidence threshold:
+Run the interview method: `Skill(skill: "loop-engineering:interview")`. It owns
+the design tree, the frontier rounds and their recommended-answer format, the
+agent-side fact-finding, the two-part gate and the assumption escape hatch. This
+command supplies only what is particular to a design gate:
 
-1. Ask **targeted, non-redundant questions in small batches (2–4 per round)**,
-   leading each round with the single most decision-blocking question, and
-   preferring the AskUserQuestion tool with concrete options (when that tool is
-   unavailable — e.g. in a delegated context — run the interview as explicit
-   written Q&A rounds instead; never skip the rounds). Cover, in priority
-   order: success criteria (how do we *verify* the goal is met?), scope boundaries
-   (in/out), constraints (stack, style, performance, deadlines), edge cases and
-   failure modes, and integration points with existing code.
-   - **Push for exact values.** "It should be fast" → "what p95 latency, in ms?".
-     Deterministic, measurable criteria (tests passing, a score threshold, a
-     count at zero) dramatically outperform subjective ones — the loop's
-     verifier cannot gate on a vibe.
-   - **Ask in behavior terms, not implementation terms** — what the user should
-     observe, not which function to write.
-2. After **every** round of answers, re-estimate and display your confidence
-   **per dimension**, not as one blended number:
+- **Scope: HOW.** Implementation-level decisions for one goal. The WHAT —
+  business outcome, epic boundaries, ordering — was settled at
+  `/loop-engineering:breakdown` or in the goal statement; confirm it against
+  memory rather than reopening it.
+- **Seed dimensions**, planting the tree's first branches, in priority order:
+  **success criteria** (how do we *verify* the goal is met?), **scope** (in/out),
+  **constraints** (stack, style, performance, deadlines), **edge cases and
+  failure modes**, **integration points** with existing code.
+- **Prior answers**: everything Step 0 recalled.
 
-   ```
-   success criteria 97% · scope 95% · constraints 92% · edge cases 80% · integration 95%
-   → gate = min = 80% (edge cases). Next round targets edge cases.
-   ```
+Two seeds carry extra weight here, because the loop spends iterations on
+whatever they get wrong:
 
-   **The gate is the MINIMUM across dimensions, never the average** — 99% on
-   scope must not be allowed to hide 70% on edge cases. Name the weakest
-   dimension explicitly and aim the next round's questions at it.
-3. **Do not produce the design while min(dimensions) < 95%.** Keep interviewing.
-4. If confidence cannot reach 95% after ~5 rounds (or the user says "just go"),
-   stop questioning: list every remaining ambiguity as an **explicit numbered
-   assumption** with your chosen default, and ask the user for one final sign-off
-   on the assumption list before designing.
+- **Success criteria must reach a deterministic, checkable form.** Prefer an
+  external anchor over agent-authored tests, and push every "fast" / "clean" /
+  "robust" to an exact value.
+- **Every criterion must name the surface its evidence lives on** — the rule
+  itself is in Step 2. Settling it here costs one question; discovering the gap
+  once the loop is running costs an iteration.
 
-Rules: never pad with filler questions to look thorough; every question must be
-capable of changing the design. Never silently assume — an unstated assumption at
-design time becomes a wasted loop iteration at run time. If an answer stays vague
-after one re-ask, record it as `- [ ] OQ: <question>` in `.loop/goal.md` under
-"Open questions" rather than guessing.
+The gate clears when the frontier is empty **and** min(dimensions) ≥ 95%. Below
+either, run another round. When the escape hatch fires instead, its signed-off
+numbered assumptions are what unblock Step 1.5.
 
 ## Step 1.5 — Compile the ask into `.loop/prompt.md`
 
@@ -95,8 +86,8 @@ that way was written at the wrong altitude — rewrite it rather than softening 
 
 ## Step 2 — Write the design artifacts
 
-When confidence ≥ 95% (or assumptions are signed off), write the artifacts
-below. Two extra rules first:
+Once the interview gate has cleared (or its assumptions are signed off), write
+the artifacts below. Two extra rules first:
 
 - **Archive before overwrite:** if `.loop/state.json` exists with a terminal
   status (`done`, `stuck`, `stopped-*`), move `goal.md`, `design.md`,
@@ -231,7 +222,7 @@ the critic must read the current artifacts, not your summary of them.
   `## Tenth-man dissent` — the user should see what the critic still worries
   about, and the loop should know which assumption to watch.
 
-**Skip condition** (don't tax trivial goals): skip the critique when the goal's
+**Skip condition** (keep trivial goals cheap): skip the critique when the goal's
 **tier** is `trivial`, or when tier is `small` AND the design has ≤ 3 work items
 AND every `Done when:` is already deterministic AND no work item touches an area
 with a `[dead]` entry or `solutions/` file in memory. When skipped, write

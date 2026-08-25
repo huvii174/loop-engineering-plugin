@@ -185,7 +185,7 @@ decision; especially then.
 
 Classify every touched entry as **Keep / Update / Consolidate / Replace / Delete**:
 
-- **Keep** — prefer no-write Keep; never edit just to leave a breadcrumb, no
+- **Keep** — prefer no-write Keep; leave the entry byte-identical, no
   cosmetic churn.
 - **Update** — evidence contradicts the entry: match the memory to reality, not
   the reverse. New evidence wins; note the correction.
