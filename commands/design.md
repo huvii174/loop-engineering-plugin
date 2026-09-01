@@ -15,20 +15,28 @@ Goal statement from the user (may be empty — then ask for it first):
 ## Step 0 — Recall memory first (under budget)
 
 Before asking anything, recall per the `loop-engineering:loop-memory` skill —
-grep by tag/frontmatter field rather than reading whole files, and load at most
-5 entries:
-- `.loop/memory/learnings.md` — grep `[type][area]` tags for this goal's domain
+read the indexes, then open the bodies whose triggers match, at most 5 entries:
+- `.loop/memory/learnings/_index.md` — read it whole (it is the map), then
+  `grep -rA 20 '^### L-NNN' .loop/memory/learnings/` for every trigger matching
+  a seed dimension below
 - `.loop/memory/solutions/*.md` — grep frontmatter (`area:`, `root_cause:`) for
   related solved problems; skip entries marked `status: stale`
-- `.loop/memory/decisions.md` — prior decisions; treat them as settled and
-  confirm they still hold
+- `.loop/memory/decisions/_index.md`, plus this epic's directory — prior
+  decisions; treat them as settled and confirm they still hold
 - `.loop/memory/epics/*.md` — if this goal is a backlog item, read that epic's
   rollup for what earlier sub-goals already discovered
 - Host project memory: `CLAUDE.md`, `AGENTS.md`, `.claude/rules/`
 
+A matched trigger is not a recall: open the body, or record why it does not
+apply. Half an entry is the half that cannot tell you whether it applies.
+
 Never ask the user a question whose answer is already recorded there. Cite the
-memory entry instead and confirm it still holds. Memory is supplementary — if it
-conflicts with the current code, the code wins and the memory gets fixed.
+memory entry by ID instead and confirm it still holds. Memory is supplementary —
+if it conflicts with the current code, the code wins and the memory gets fixed.
+
+Carry a **`Recall:`** line into `design.md` (Step 2) accounting for every ID the
+auto-recall hook injected (`.loop/.recall-log`): `applied` with what it changed,
+or `dismissed` with why. Both are real answers; silence is not.
 
 ## Step 1 — The interview (HOW-scoped)
 
@@ -90,17 +98,21 @@ Once the interview gate has cleared (or its assumptions are signed off), write
 the artifacts below. Two extra rules first:
 
 - **Archive before overwrite:** if `.loop/state.json` exists with a terminal
-  status (`done`, `stuck`, `stopped-*`), move `goal.md`, `design.md`,
-  `prompt.md`, `state.json`, and `iterations/` into `.loop/archive/<run_id>/`
-  before writing the new goal — loop history must survive sub-goal transitions.
+  status (`done`, `stuck`, `stopped-*`), run
+  `node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-archive.mjs run --id <run_id>` before
+  writing the new goal — loop history must survive sub-goal transitions. The
+  script owns the move so the layout cannot drift; do it by hand and a copy
+  lands inside its own previous copy.
 - **Epic linkage:** if `.loop/active-epic` exists (its one line is the epic
   slug) and this goal matches an item in `.loop/epics/<slug>/backlog.md`, set
   that row's status to `designed`, start `goal.md` with
   `Epic: <slug> — backlog item #N`, and use the item's seed `Done when:` /
   `Must not:` as the starting point for the success criteria (refine them;
-  don't contradict them). The epic-level interview already happened — only ask
-  HOW-questions here. To design against a non-active epic, the user names it;
-  update the pointer only when they say so.
+  don't contradict them). Write `"epic": "<slug>"` into `state.json` too — it
+  is what lets `loop-archive.mjs prune` retire this run's archive with its epic.
+  The epic-level interview already happened — only ask HOW-questions here. To
+  design against a non-active epic, the user names it; update the pointer only
+  when they say so.
 
 **`.loop/goal.md`**
 ```markdown
@@ -123,8 +135,11 @@ the artifacts below. Two extra rules first:
 - [ ] ...
 
 ## Global boundaries
-- <invariants that hold for the whole goal: files/areas not to touch, behavior
-  not to change, dependencies not to add>
+- Do not touch: <glob or path — EXACTLY this syntax; the boundary-gate hook
+  matches literal `Do not touch:` lines here and mechanically blocks edits to
+  them while the loop runs. A boundary written as free prose is advice; written
+  on this line it is enforcement>
+- <other invariants: behavior not to change, dependencies not to add>
 
 ## Tier
 tier: trivial | small | medium | large   (routing rules in the loop-engine
@@ -145,7 +160,9 @@ or satisfy the goal.
 
 **`.loop/design.md`** — the implementation design: architecture, ordered work
 breakdown (each item small enough for one loop iteration), verification method per
-item, and risks.
+item, risks, and a closing `## Recall` section holding Step 0's accounting line
+(then truncate `.loop/.recall-log`, the same inbox rule as the loop's Record
+step).
 
 **Name the evidence surface per criterion, not just the condition.** A
 `Done when:` whose surface has no check that would fail for its regression is
@@ -174,23 +191,36 @@ mtime predates the implementation.
   "confidence_at_design": "<your final min-across-dimensions %>",
   "created": "<ISO date>",
   "updated": "<ISO date>",
-  "breaker": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
+  "breaker_thresholds": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
   "breaker_reset_at_iteration": 0,
   "history": []
 }
 ```
 
-Also scaffold the run layout so the loop never appends into nonexistent files:
-create `.loop/iterations/`, `.loop/memory/`, `.loop/memory/solutions/`, and
-`.loop/memory/epics/`. If `.loop/memory/learnings.md` is absent, write it with
-the headings from the `loop-engineering:loop-memory` skill — `## Never store`
-(pre-filled with secrets / credentials / customer data), `## Environment`,
-`## Gotchas`, `## Patterns`, `## What didn't work`, `## Scratch (this run)` — plus
-an empty `decisions.md` under a `# Decisions` heading.
+`breaker_thresholds` holds THRESHOLDS, never live counters — the breaker computes
+counters from `history` on every run. Leave the defaults unless deliberately
+tuning sensitivity for a goal whose criteria can only close late.
 
-**Mirror this goal's design decisions into `.loop/memory/decisions.md`** (choice —
-rationale; alternatives rejected). `design.md` gets archived when the next
-sub-goal starts, so a decision recorded only there is effectively lost.
+Also scaffold the run layout so the loop never appends into nonexistent files.
+**Legacy check first**: a populated flat `.loop/memory/learnings.md` or
+`decisions.md` means the store predates the index/body layout — migrate it
+(`node "$CLAUDE_PLUGIN_ROOT"/scripts/migrate-memory.mjs --dry-run`, show the
+plan, then run it for real) instead of scaffolding beside it, because a fresh
+empty index silently outranks the flat file for every reader. Then create
+`.loop/iterations/`, `.loop/memory/solutions/`, `.loop/memory/epics/`,
+`.loop/memory/scratch/`, and the two index/body trees from the
+`loop-engineering:loop-memory` skill — `.loop/memory/learnings/_index.md` (with
+`## Never store` pre-filled with secrets / credentials / customer data, and the
+`## env` / `## gotcha` / `## pattern` / `## dead` groups) alongside empty
+`env.md`, `gotchas.md`, `patterns.md`, `dead-ends.md`; and
+`.loop/memory/decisions/_index.md` alongside an empty `durable.md`.
+
+**Mirror this goal's design decisions into `.loop/memory/decisions/`** (choice —
+rationale; alternatives rejected), under this epic's directory or `durable.md`,
+**each with its trigger line in `decisions/_index.md`**. The index is the only
+half recall reads, so a decision with a body and no trigger is recorded and
+unreachable — the same loss as recording it only in `design.md`, which gets
+archived when the next sub-goal starts.
 
 ## Step 2.4 — Front-loading audit (before the critic sees it)
 
@@ -208,7 +238,7 @@ The design you just wrote is the only artifact in this flow that would otherwise
 go unchecked — and it is the most expensive place to be wrong. Submit it to
 `Agent(subagent_type: "loop-engineering:plan-critic", prompt: <payload>)` with
 paths to `.loop/prompt.md`, `.loop/goal.md`, `.loop/design.md`, and
-`.loop/memory/` (it especially needs `solutions/` and `## What didn't work` as
+`.loop/memory/` (it especially needs `solutions/` and `learnings/dead-ends.md` as
 ammunition). Compose the payload as Template N under the
 `loop-engineering:prompt-craft` lint, and pass paths rather than pasted files —
 the critic must read the current artifacts, not your summary of them.
@@ -217,7 +247,7 @@ the critic must read the current artifacts, not your summary of them.
 - **REVISE** → apply the findings (or rebut them with evidence), update the
   artifacts, resubmit. **Maximum 2 rounds**; unresolved disagreement after that
   goes to the user verbatim — both positions — and their ruling is recorded in
-  `decisions.md`.
+  `decisions/`.
 - **APPROVE** → copy its "Dissent on record" line into `design.md` under
   `## Tenth-man dissent` — the user should see what the critic still worries
   about, and the loop should know which assumption to watch.

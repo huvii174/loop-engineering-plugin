@@ -28,14 +28,46 @@ yet" — but only inside explicit, bounded stop conditions.
   archive/
     <run_id>/        # finished goal runs (archived by the design gate)
     epics/<slug>/    # closed epic instances (archived when the retro is written)
-  memory/
-    learnings.md     # compounded learnings (see loop-memory skill)
+  .recall-log        # IDs auto-recall injected — what the `Recall:` line answers to
+  parallel.json      # worktree slices, when a run fans out (absent otherwise)
+  memory/            # index + body; see loop-memory skill
+    learnings/_index.md    # triggers — the half read by default
+    learnings/<type>.md    # bodies, uncapped, reached by `### L-NNN` anchor
+    decisions/_index.md    # + <epic>/item-N.md, durable.md
+    solutions/<slug>.md
     epics/<slug>.md  # per-epic knowledge rollup — NEVER archived; outlives the instance
-    decisions.md     # design decisions + rationale
+    scratch/         # run.md + adhoc.md — empty at every run end
 ```
 
 Add `.loop/` to the host `.gitignore` only if the user asks; by default it is
-committed so loop history travels with the repo.
+committed so loop history travels with the repo. `.recall-log` is the exception
+worth ignoring on its own: it is per-session churn, and the durable record of
+what memory changed is the `Recall:` line in the iteration record.
+
+## Parallel slices — `.loop/parallel.json`
+
+One `.loop/` tracks one active goal, so parallel sub-goals run in separate git
+worktrees with a `.loop/` each. **The moment a run fans out, the dispatching
+`.loop/` writes the manifest** — it is the only record of where those worktrees
+are, and a session that dies mid-flight (a usage limit, a crash) takes the
+knowledge with it otherwise:
+
+```json
+{
+  "slices": [
+    {"id": "pmA4", "worktree": "../hiops-wt-pmA4", "branch": "feat/pmA4-migrate-rows",
+     "brief": "<path to the brief the slice was dispatched with>",
+     "agent_prefix": "critic-a4", "started": "2026-08-18"}
+  ]
+}
+```
+
+Each slice's own `state.json` holds its position; the manifest holds only where
+to look. `/loop-engineering:status` renders it, which makes resume a read rather
+than a reconstruction. Two rules travel with a fan-out: **name every subagent
+with its slice prefix and never reuse a name** (a fresh name is a fresh context,
+which is the point of a critic or verifier), and never address an agent across
+prefixes. Delete a slice's entry when its worktree merges.
 
 **`archive/` is frozen.** A run or epic moved there is a historical snapshot:
 never edit it, never update it to match today's code, and never cite it as
@@ -51,13 +83,14 @@ prevents.
 {
   "status": "designed | running | done | stuck | stopped-max-iterations | stopped-user",
   "run_id": "run-2026-07-29",
+  "epic": "your-epic-slug",
   "tier": "small",
   "iteration": 3,
   "max_iterations": 12,
   "confidence_at_design": "96%",
   "created": "2026-07-29",
   "updated": "2026-07-29",
-  "breaker": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
+  "breaker_thresholds": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
   "breaker_reset_at_iteration": 0,
   "history": [
     {"n": 1, "intent": "scaffold API route", "approach": "minimal Express route + fixture test",
@@ -71,6 +104,18 @@ prevents.
   ]
 }
 ```
+
+`epic` is present only on an epic-driven run (the design gate writes it from
+`active-epic`); it is how `loop-archive.mjs prune` knows an archived run's epic
+is itself already archived and retires the run with it.
+
+`breaker_thresholds` holds **thresholds, never counters** — the breaker recomputes
+counters from `history` on every run, so there is nothing there to reset. Writing
+zeros to mean "counters cleared" makes every `counter >= threshold` compare true
+and stops a brand-new run on its first check; the breaker now refuses any
+non-positive value in favour of the default and says so on stderr. To clear
+counters, set `breaker_reset_at_iteration`. The former spelling `breaker` is
+still read; setting both warns and prefers `breaker_thresholds`.
 
 `criteria_passed` = how many success criteria are verifier-APPROVED after this
 iteration. Record it on **every** entry — it is what lets the breaker see a
@@ -97,6 +142,8 @@ approach.
 - **Injected:** <what shaped this iteration's context: memory entries recalled
   (by tag/slug), the "already tried" block, any breaker ADVISORY carried in,
   the compiled brief — or "none">
+- **Recall:** <every ID in .loop/.recall-log, each `applied (what it changed)` or
+  `dismissed (why it does not apply here)` — or "none injected">
 - **Actions:** <what was done, files touched>
 - **Delegated:** <agent> — <task> — <outcome>   (or "none")
 - **Verification:** <exact command(s) the verifier ran>
@@ -129,6 +176,12 @@ approach.
   afterwards: the wrong output looks inexplicable when the wrong input is
   invisible. Recording the injection is also what makes a bad memory entry
   traceable to the iteration it misled.
+- **Recalled ⟺ judged.** `Injected:` records what arrived; `Recall:` records what
+  became of it. Every ID the hook logged is `applied` or `dismissed` with a
+  reason — a dismissal is a real judgement and the cheap half to write, while
+  silence is indistinguishable from never having read the entry. The dismissal
+  reasons are also what the memory command's hit-rate pass reads to find a
+  trigger that over-matches.
 - **"Already tried" injection**: every iteration's prompt context must start
   from `state.json.history` — list what was already tried and what failed, and
   do NOT repeat a failed approach unchanged. This is the loop's short-term

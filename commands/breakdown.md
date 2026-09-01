@@ -24,9 +24,12 @@ Read, in this order (contract: `Skill(skill: "loop-engineering:loop-memory")`):
    risk-first ordering held, and the one change each retro asked for. Read the
    retros and **apply them to this split** — an epic rollup that nobody reads
    makes the whole compounding loop decorative.
-2. `.loop/memory/decisions.md` — decisions already settled; don't re-litigate.
-3. `.loop/memory/learnings.md` (grep by `[type][area]`) and any relevant
-   `solutions/` entries, under the recall budget (max 5).
+2. `.loop/memory/decisions/_index.md` plus `decisions/durable.md` — decisions
+   already settled; don't re-litigate. Open an epic's own directory only when the
+   split touches it; the index is the map.
+3. `.loop/memory/learnings/_index.md`, opening the body of every trigger that
+   matches this epic's domain, and any relevant `solutions/` entries, under the
+   recall budget (max 5).
 4. Host memory: `CLAUDE.md`, `AGENTS.md`.
 
 Never ask the user a question these already answer — cite the entry and confirm
@@ -123,13 +126,15 @@ writing anything.
 Status enum: `pending | designed | running | done | stuck`. Tier routes process
 depth downstream (loop-engine skill has the table); the design gate inherits it.
 
-Also persist the sign-off into recallable memory (create `.loop/memory/` and a
-`# Decisions`-headed `decisions.md` if absent): one line per decision the user
-made during the interview and breakdown sign-off — resolved open questions,
-rejected orderings, scope calls — in the `loop-engineering:loop-memory` skill's
-decisions format (**decision** — rationale; alternatives rejected; epic-slug).
-`epic.md` states the outcome; `decisions.md` is what the design gate and future
-runs actually recall — a decision recorded only in epic prose gets re-asked.
+Also persist the sign-off into recallable memory (create
+`.loop/memory/decisions/<epic-slug>/` and its `_index.md` if absent): one entry
+per decision the user made during the interview and breakdown sign-off — resolved
+open questions, rejected orderings, scope calls — in the
+`loop-engineering:loop-memory` skill's decisions format (ID + status anchor;
+Decision / Rationale / Alternatives rejected), each with its trigger line in
+`decisions/_index.md`. `epic.md` states the outcome; `decisions/` is what the
+design gate and future runs actually recall — a decision recorded only in epic
+prose gets re-asked.
 
 **Write the pointer**: put the epic slug (one line) into `.loop/active-epic` —
 this is what `design` and `loop` resolve. If another epic was active, confirm

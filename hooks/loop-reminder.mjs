@@ -24,22 +24,32 @@ function mdSlugs(dir) {
   catch { return []; }
 }
 
+/** Trigger lines in an index, else tagged one-liners in the flat legacy file. */
+function countEntries(memDir, root, legacyFile) {
+  const idx = readIfExists(join(memDir, root, '_index.md'));
+  const text = idx !== null ? idx : (legacyFile ? readIfExists(join(memDir, legacyFile)) : null);
+  if (!text) return 0;
+  return text.split('\n').filter((l) => /^-\s*(?:[LD]-|\[)/.test(l.trim())).length;
+}
+
 function memoryDigest(cwd) {
   const memDir = join(cwd, '.loop', 'memory');
   if (!existsSync(memDir)) return '';
-  const learnings = readIfExists(join(memDir, 'learnings.md')) || '';
-  const oneLiners = learnings.split('\n').filter((l) => /^-\s*\[/.test(l.trim())).length;
+  const learnings = countEntries(memDir, 'learnings', 'learnings.md');
+  const decisions = countEntries(memDir, 'decisions', 'decisions.md');
   const solutions = mdSlugs(join(memDir, 'solutions'));
   const epics = mdSlugs(join(memDir, 'epics'));
   const slugList = solutions.length
     ? ` (${solutions.slice(0, MAX_SLUGS).join(', ')}${solutions.length > MAX_SLUGS ? ', …' : ''})`
     : '';
   return (
-    `[loop-engineering] Project memory: ${oneLiners} learnings, ` +
+    `[loop-engineering] Project memory: ${learnings} learnings, ${decisions} decisions, ` +
     `${solutions.length} solution entr${solutions.length === 1 ? 'y' : 'ies'}${slugList}, ` +
     `${epics.length} epic rollup${epics.length === 1 ? '' : 's'} under .loop/memory/. ` +
-    `Relevant entries auto-inject on each prompt; for deliberate recall grep by [type][area] tag ` +
-    `(budget: 5). Capture ad-hoc findings as one-liners in .loop/memory/scratch/adhoc.md; ` +
+    `Relevant entries auto-inject on each prompt — strong matches arrive with their body, ` +
+    `weaker ones with the grep that opens it; account for each injected ID in the run's Recall: line. ` +
+    `For deliberate recall read _index.md and grep by [type][area] tag (budget: 5). ` +
+    `Capture ad-hoc findings as one-liners in .loop/memory/scratch/adhoc.md; ` +
     `distil with /loop-engineering:memory.\n`
   );
 }

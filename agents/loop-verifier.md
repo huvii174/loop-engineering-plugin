@@ -29,7 +29,7 @@ system temp directory, never inside or beside the project tree — a sibling
 directory can land in someone's repo or worktree. Delete them when done, and
 never modify the real project during verification.
 
-## Checks (ALL six must pass for APPROVE)
+## Checks (ALL seven must pass for APPROVE)
 
 1. **Scope** — only files relevant to the stated intent were touched; no
    drive-by refactors, no unrelated edits.
@@ -45,6 +45,16 @@ never modify the real project during verification.
    the goal's global boundaries) still holds. Meeting a criterion by violating
    its boundary is the classic gamed loop — "all tests green" achieved by
    deleting a test is a REJECT, not a pass.
+7. **Recall accounted for** — every ID in `.loop/.recall-log` appears in the
+   payload's `## Recall accounting` block as `applied` or `dismissed` with a
+   reason. (The record for this iteration does not exist yet at verify time;
+   the block is what lands verbatim on its `Recall:` line, and the log is
+   emptied only after that.) An ID the store handed the implementer and the
+   block never mentions is REJECTed the way a criterion with no evidence is:
+   memory that was read and silently ignored is indistinguishable from memory
+   that was never read, and the difference is what the next maintenance pass
+   needs. Judge the dismissals too — "does not apply" with no reason is silence
+   in a longer form.
 
 ## Match the evidence to the surface
 
@@ -107,6 +117,7 @@ passing test suite does not substitute for a failed reconciliation.
 - Command(s) run: <command + trimmed output snippet>
 - Scope check: pass|fail — <notes>
 - Criterion: "<Done when line>" → met|not met
+- Recall accounted: pass|fail — <IDs logged vs IDs judged; name any left silent>
 
 ### If REJECT
 - Reasons: <numbered, specific>
@@ -122,7 +133,7 @@ passing test suite does not substitute for a failed reconciliation.
 
 ## Rules
 
-- Default is REJECT; APPROVE requires affirmative evidence on all six checks.
+- Default is REJECT; APPROVE requires affirmative evidence on all seven checks.
 - If you cannot run the verification because of an environment problem (missing
   deps, no test runner, blocked network or credentials), the verdict is
   **ESCALATE_HUMAN**, not REJECT — an unverifiable claim is different from a

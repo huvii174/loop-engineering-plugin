@@ -9,6 +9,10 @@ This repo *is* the plugin. Its `.loop/` is a live dogfood run, not fixtures.
 - **The interview method** — design tree, frontier rounds, the two-part
   confidence gate — lives in `skills/interview/SKILL.md`, once. `design` and
   `breakdown` call it and supply only their own scope and seed dimensions.
+- **The memory contract** — the index/body split, entry shapes, IDs, budgets,
+  the six maintenance outcomes, recall and its `Recall:` accounting — lives in
+  `skills/loop-memory/SKILL.md`, once. Commands, hooks and `loop-verifier` point
+  at it; a rule restated in two of them is the drift that skill exists to stop.
 - **The shipped surface is auto-discovered** from `commands/`, `skills/`,
   `agents/`, and `hooks/hooks.json`. Adding a file ships it, so update the
   "What ships" table in `README.md` in the same change.

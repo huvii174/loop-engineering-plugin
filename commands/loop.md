@@ -20,8 +20,12 @@ contract first: `Skill(skill: "loop-engineering:loop-engine")`.
 2. Read `.loop/state.json` and the last entry in `.loop/iterations/` to know
    exactly where the loop stands. The loop is resumable: never redo completed
    work. Recall memory under budget per the `loop-engineering:loop-memory` skill
-   — grep `learnings.md` by `[type][area]` tag and `solutions/` by frontmatter
-   field, load at most 5 entries, and apply their gotchas proactively.
+   — read `learnings/_index.md`, open the body of every trigger matching this
+   goal (`grep -rA 20 '^### L-NNN' .loop/memory/learnings/`), grep `solutions/`
+   by frontmatter field, load at most 5 entries, and apply their gotchas
+   proactively. Every ID the recall hook injected (`.loop/.recall-log`) is
+   accounted for in the iteration record's `Recall:` line — applied, or dismissed
+   with a reason.
 3. Behavior by `state.json.status`:
    - `designed` or `running` → proceed (resume from the last iteration record).
    - `stopped-max-iterations` → require a new max passed as the command
@@ -109,6 +113,11 @@ increment** from the design's work breakdown:
    <file list + summary of the change>
    ## Claimed verification
    <command(s) you believe verify it, and what you observed>
+   ## Recall accounting
+   <every ID now in .loop/.recall-log: `applied (what it changed)` or
+   `dismissed (why it does not apply here)` — or "none injected". The verifier
+   judges this block (its check 7); it then lands verbatim on the iteration
+   record's `Recall:` line>
    ```
 
    It returns `APPROVE | REJECT | ESCALATE_HUMAN` with evidence. On APPROVE,
@@ -126,11 +135,17 @@ increment** from the design's work breakdown:
    see a plateau, and what makes a criterion-closing pass distinguishable from a
    bookkeeping pass. Omit it and an iteration that only tidied records will
    silently reset the failure counters that were about to stop a stuck loop.
+
+   **`.loop/.recall-log` is an inbox, and Record empties it**: once every ID in
+   it is accounted on this record's `Recall:` line, truncate the log. The
+   durable history is the `Recall:` lines themselves — that is what the memory
+   command's hit-rate pass reads — and an unemptied log makes the next record
+   re-answer for injections that were already judged.
 5. **Learn (scratch tier)** — if this iteration produced a lesson, append it to
-   `## Scratch (this run)` in `.loop/memory/learnings.md`, tagged
-   `(<run_id>, iter N)`. Write it raw and immediately; scratch is cheap. It gets
-   distilled into the right shape (one-liner vs `solutions/` entry) at the end of
-   the run — never promote a scratch note straight to a durable section.
+   `.loop/memory/scratch/run.md`, tagged `(<run_id>, iter N)`. Write it raw and
+   immediately; scratch is cheap. It gets distilled into the right shape
+   (learning vs `solutions/` entry) at the end of the run — never promote a
+   scratch note straight to a durable file.
 
 ### Defect increments — make it red before you theorise
 
@@ -197,8 +212,10 @@ user pick a direction. The two stops the script cannot see are yours to detect:
   unverifiable attempt is not a failed approach.)
 - **User cancel** → write `status: "stopped-user"` before stopping.
 
-Thresholds live in `state.json` under an optional `breaker` object
-(`stagnation`, `frustration`, `noProgress`, `similarity`); defaults 3/3/5/0.85.
+Thresholds live in `state.json` under an optional `breaker_thresholds` object
+(`stagnation`, `frustration`, `noProgress`, `plateau`, `similarity`); defaults
+3/3/5/4/0.85. It holds thresholds, never counters — non-positive values are
+refused for the defaults with a warning.
 When a `stuck` loop is resumed after the user explains what changed, set
 `breaker_reset_at_iteration` to the current `iteration` — the breaker then
 ignores everything before it instead of tripping again immediately.
@@ -210,8 +227,9 @@ iteration.
 
 When the last criterion passes, load
 `Skill(skill: "loop-engineering:loop-review")` and run it: select dimensions by
-its rules (correctness always; security/test-adequacy/simplification only when
-their triggers fire; cap 4), fan the reviewers out **in parallel with fresh
+its selection table — the skill owns which dimensions run at which tier and
+trigger, and a summary restated here is how the two drifted once already — then
+fan the reviewers out **in parallel with fresh
 context**, refute blocker/major findings before believing them, and feed
 confirmed findings back into this same loop as normal iterations — verifier,
 record, breaker, no side door. Minor findings go to memory scratch, never to
@@ -238,10 +256,17 @@ gate writes `status: "done"`.
    skipping it breaks epic-level compounding. Then name the next pending item for
    `/loop-engineering:design "<sub-goal>"` — or, if this closed the last item:
    write the **Epic retro** (Step 4 of the memory command), report the epic's
-   acceptance-criteria status, **archive the instance** (`.loop/epics/<slug>/` →
-   `.loop/archive/epics/<slug>/` — its knowledge already lives in
-   `.loop/memory/epics/<slug>.md`, which is never archived), and clear
-   `.loop/active-epic` if it pointed there. (Legacy singleton `.loop/epic.md` /
+   acceptance-criteria status, **promote any still-binding decision** from
+   `.loop/memory/decisions/<slug>/` into `decisions/durable.md` keeping its ID
+   (move its `_index.md` line into the durable group too), then **archive the
+   instance** with
+   `node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-archive.mjs epic --slug <slug>` (its
+   knowledge already lives in `.loop/memory/epics/<slug>.md`, which is never
+   archived — the script refuses an instance whose rollup is missing, and it
+   retires the epic's remaining `decisions/<slug>/` bodies into the archive with
+   it). Drop the retired `## <slug>` group from `decisions/_index.md` — index
+   lines must not outlive their bodies — and clear `.loop/active-epic` if it
+   pointed there. (Legacy singleton `.loop/epic.md` /
    `backlog.md`: migrate per the breakdown command before touching them.)
 4. Show the final loop visualization (same rendering as
    `/loop-engineering:status`) and a plain-language summary: what was achieved,

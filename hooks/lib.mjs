@@ -33,12 +33,20 @@ export function readIfExists(p) {
   try { return readFileSync(p, 'utf8'); } catch { return null; }
 }
 
-/** Newest mtime (ms) of any file under dir, recursive. 0 when dir missing/empty. */
+/**
+ * Newest mtime (ms) of any file under dir, recursive. 0 when dir missing/empty.
+ *
+ * Dot-entries are skipped: session tooling drops state (`.omc/`, caches) inside
+ * whatever directory it is run from, and a dropping under `.loop/memory/` would
+ * otherwise read as "this session compounded its knowledge" and silence the
+ * memory-gate. Only files a human or the model wrote count as a write.
+ */
 export function newestMtime(dir) {
   let newest = 0;
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return 0; }
   for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
     const p = join(dir, e.name);
     try {
       if (e.isDirectory()) newest = Math.max(newest, newestMtime(p));

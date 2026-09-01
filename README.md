@@ -22,7 +22,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | command | `breakdown` · `run` · `design` · `loop` · `status` · `memory` | the six entry points (table below) |
 | skill | `interview` | the questioning method: design tree, frontier rounds, the two-part gate, the escape hatch |
 | skill | `loop-engine` | `.loop/` state contract, iteration record format, breaker semantics, tier routing |
-| skill | `loop-memory` | three memory shapes, promotion gate, entry lifecycle, recall budget, calibration examples |
+| skill | `loop-memory` | index/body split, four memory shapes, promotion gate, entry lifecycle, recall budget, calibration examples |
 | skill | `loop-review` | the review gate: parallel fresh-context reviewers, adversarial refutation |
 | skill | `prompt-craft` | compiles the ask into `.loop/prompt.md`; composes every `Agent()` brief |
 | agent | `loop-verifier` | per-iteration verdict, reject-by-default, owns the evidence routing table |
@@ -30,6 +30,8 @@ evidence-routing and memory-lifecycle rules are adapted from
 | agent | `epic-planner` | proposes the backlog; never designs, never edits |
 | hook | `boundary-gate` · `memory-gate` · `loop-reminder` · `memory-recall` | the deterministic layer (see below) |
 | script | `loop-breaker.mjs` | the circuit breaker, as code rather than as a prompt |
+| script | `loop-archive.mjs` | run/epic archiving, hygiene sweep, retention — deterministic, so the layout cannot drift (`run` · `epic` · `hygiene` · `prune`; all support `--dry-run`, `prune` is dry until `--yes`) |
+| script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree |
 
 ## Install (import into any project)
 
@@ -98,9 +100,13 @@ The loop runs it before every iteration and cannot overrule exit `2`. Failure
 signatures are normalized (timestamps, hex addresses, paths → basenames, numbers
 → `#`) so "the same error" survives volatile detail; approach similarity is
 trigram Jaccard raised by containment at 0.85, so a reworded retry still counts
-as a repeat. Thresholds are per-loop via a `breaker` object in `state.json`;
-`breaker_reset_at_iteration` clears counters when a `stuck` loop resumes.
-Verify with `node scripts/test-loop-breaker.mjs` (23 checks).
+as a repeat. Thresholds are per-loop via a `breaker_thresholds` object in
+`state.json`; `breaker_reset_at_iteration` clears counters when a `stuck` loop
+resumes. The field holds **thresholds, never counters** — counters are recomputed
+from `history` on every run — so a non-positive value is refused in favour of the
+default with a warning naming the field. (The former spelling `breaker` is still
+read; setting both warns and prefers the new one.) Verify with
+`node scripts/test-loop-breaker.mjs` (42 checks).
 
 Two rules keep those counters honest, both derived from recorded state rather
 than from anything the loop says about itself. **Bookkeeping passes are
@@ -127,14 +133,16 @@ project has no `.loop/`, **fail open** on any error, and can be disabled with
 | Hook | Event | What it does |
 |---|---|---|
 | `boundary-gate` | PreToolUse (Edit/Write) | While a loop is `running`, blocks edits to paths under `Do not touch:` lines in goal.md's `## Global boundaries` — a Must-not upgraded from verifier-caught to mechanically impossible |
-| `memory-gate` | Stop | Blocks ending the session (once) when the loop reached a terminal state but `.loop/memory/` wasn't touched afterwards, or scratch entries were never distilled. **Ad-hoc branch:** with no loop involved, if the session edited files while working through errors and captured nothing, nudges once for a one-liner in `scratch/adhoc.md` |
+| `memory-gate` | Stop | Blocks ending the session (once) when the loop reached a terminal state but `.loop/memory/` wasn't touched afterwards, scratch was never distilled, recalled entries were never accounted for in a `Recall:` line, or an `_index.md` is over its reading budget. **Ad-hoc branch:** with no loop involved, if the session edited files while working through errors and captured nothing, nudges once for a one-liner in `scratch/adhoc.md` |
 | `loop-reminder` | SessionStart | One context line when the project has an open (`running`/`stuck`) loop, plus a **memory digest** (what `.loop/memory/` holds) so ad-hoc sessions know the store exists |
-| `memory-recall` | UserPromptSubmit | **Ambient recall** — keyword-greps `.loop/memory/` against each (non-slash) user prompt and injects the top matches (5-entry budget, labeled supplementary). The push half of memory: slash commands pull; ad-hoc prompts get pushed to |
+| `memory-recall` | UserPromptSubmit | **Ambient recall** — keyword-matches the indexes against each (non-slash) user prompt. A strong match arrives with its **body already inlined**; weaker ones arrive as a trigger plus the exact `grep` that opens the body — a pointer nobody follows is a recall that did not happen. 5-entry budget, labeled supplementary, injected IDs logged to `.loop/.recall-log` |
 
 Deliberately NOT hooks: memory *distillation* (needs judgment — the ad-hoc nudge
 collects raw one-liners, but only `/loop-engineering:memory` turns scratch into
 durable entries) and self-evaluation (the breaker already runs as code inside the
-loop). Verify with `node scripts/test-hooks.mjs` (36 checks).
+loop). Verify with `node scripts/test-hooks.mjs` (59 checks); the scripts have
+their own suites — `test-loop-breaker.mjs` (42), `test-loop-archive.mjs` (49),
+`test-migrate-memory.mjs` (87).
 
 ## Commands
 
@@ -145,7 +153,7 @@ loop). Verify with `node scripts/test-hooks.mjs` (36 checks).
 | `/loop-engineering:design "<goal>"` | Interview-gated design: maps the ask as a design tree and asks the whole **frontier** each round — every question numbered, each carrying its recommended answer — while facts it can look up itself go to a subagent instead of to you. Once the frontier is empty **and** min-dimension confidence ≥ 95% (or you sign off its explicit assumptions) it first **compiles your ask** into `.loop/prompt.md` for a one-line sign-off, then writes `.loop/goal.md` + `.loop/design.md`. Reads memory first so it never re-asks answered questions. The finished design then faces the **tenth-man `plan-critic`** — a fresh-context agent obliged to assume the signed-off plan is wrong and attack it with evidence (max 2 revise rounds; approvals carry the surviving dissent on record; trivial designs skip it visibly). |
 | `/loop-engineering:loop [max]` | Runs the goal-based loop: one small verifiable increment per iteration, evidence-based verification against the success criteria, append-only iteration records, resumable from `.loop/state.json`. Fails don't stop it — bounded stop conditions do. An increment that **fixes** something runs the defect protocol first: one command that goes red on this defect, already run once, before any theory. When the last criterion passes, a **review gate** fans out parallel fresh-context reviewers (correctness always; spec fidelity, security, test-adequacy and simplification when their triggers fire), refutes findings before believing them, reports per dimension without reranking across them, and feeds confirmed ones back in as normal iterations — only a cleared gate writes `done`. |
 | `/loop-engineering:status` | Read-only dashboard: mermaid pipeline with current position, iteration timeline, success-criteria checklist with evidence, delegated agents, breaker counters with any standing advisory, next action. |
-| `/loop-engineering:memory` | Compounding step — the loop performs the same procedure inline at every stop: harvest → distill → merge learnings into `.loop/memory/`, promote repo-wide facts into the host `CLAUDE.md`, prune to keep memory readable. |
+| `/loop-engineering:memory` | Compounding step — the loop performs the same procedure inline at every stop: harvest → distill → merge learnings into `.loop/memory/`, promote repo-wide facts into the host `CLAUDE.md`, then a **hit-rate pass** that reads `.loop/.recall-log` against the run's `Recall:` lines to find triggers that over-match, and the correct entries nobody could reach. Pruning consolidates and demotes; bodies are never trimmed for size. |
 
 ## State layout (created in your project)
 
@@ -161,15 +169,34 @@ loop). Verify with `node scripts/test-hooks.mjs` (36 checks).
   state.json       # loop position — makes the loop resumable
   iterations/      # one append-only record per iteration
   archive/<run>/   # finished sub-goal runs, moved here by the design gate
+  .recall-log      # IDs auto-recall injected — what each run's `Recall:` line answers to
+  parallel.json    # worktree slices, when a run fans out (absent otherwise)
   memory/
-    learnings.md   # tagged one-liners + "## Never store" + this run's scratch
+    learnings/
+      _index.md    # TRIGGERS: one <=200-char line per entry + "## Never store".
+                   # The only half read by default — this is what stays flat.
+      env.md · gotchas.md · patterns.md · dead-ends.md
+                   # BODIES: uncapped, reached by `### L-NNN` anchor when a trigger fires
+    decisions/
+      _index.md · durable.md · <epic-slug>/item-<N>.md
+                   # sharded by epic so an epic's decisions retire with it;
+                   # supersede links (not the directory) carry the history
     solutions/     # full entries for non-trivial solved problems (typed frontmatter)
     epics/         # per-epic rollup: what each sub-goal taught + epic retro
-    decisions.md   # decisions + rejected alternatives
     scratch/
-      adhoc.md     # one-liners captured OUTSIDE loop runs (memory-gate nudge);
-                   # emptied by every /loop-engineering:memory run
+      run.md       # this run's raw notes    adhoc.md  # captured OUTSIDE loop runs
+                   # both emptied by every /loop-engineering:memory run
 ```
+
+**Why the store splits in two.** A long-lived project's knowledge grows without
+bound; what must stay flat is the cost of reading it by default. So growth lands
+in bodies, which are unbounded and cold, while the index grows only with the
+number of distinct *kinds* of problem — and the consolidation trigger keeps
+pushing it back toward kinds. Migrate an existing flat store with
+`node "$CLAUDE_PLUGIN_ROOT"/scripts/migrate-memory.mjs --dry-run` first (in a
+host project the script lives in the plugin install dir, not your repo — easiest
+is to ask Claude, whose commands resolve that variable); it renames the sources
+to `*.pre-migration` rather than deleting them.
 
 ## Epic flow (big goals)
 
@@ -212,7 +239,9 @@ same bad slices forever.
 **Nothing reaches the host `CLAUDE.md` unreviewed.** That file loads into every
 future session, so promotion requires the user or the verifier agent, and scratch
 is never promoted directly. Recall runs under a budget — retrieval without one is
-just context spam.
+just context spam — and what it hands over is accounted for: every injected ID is
+marked `applied` or `dismissed with a reason` in the run's record, because memory
+read and silently ignored is indistinguishable from memory never read.
 
 **Entries have a lifecycle, and the destructive end of it has rules.** A
 decision without the alternatives it beat is not recorded but asserted, so
@@ -222,10 +251,12 @@ edited into a different conclusion: it is replaced, or superseded by an entry
 that links back. A consolidation transfers every unique rationale, alternative
 and failed attempt before the absorbed entry disappears. `.loop/archive/` is
 frozen: history to read, never authority to cite. And because rules alone do not
-decide the hard cases, the skill carries **worked keep/delete examples** with
-their lengths, plus the reminder that length and age are discovery aids rather
-than criteria — and that the ~60-entry budget is a trigger to run maintenance,
-never a quota to prune toward.
+decide the hard cases, the skill carries **worked keep/delete/demote examples**
+with their lengths, plus the reminder that length and age are discovery aids
+rather than criteria — and that the index budget is a trigger to run
+maintenance, never a quota to prune toward. What relieves it is **Consolidate**
+and **Demote**, not deletion: a body costs nothing until its trigger fires, so a
+grounded entry loses its index line long before it loses its knowledge.
 
 **Evidence is matched to the surface it lives on.** Each `Done when:` names the
 surface (behavior, CLI output, model-visible text, docs, published artifact,

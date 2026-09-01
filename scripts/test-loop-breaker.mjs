@@ -4,7 +4,7 @@
  * Exits 0 when every case matches, 1 otherwise. No dependencies.
  */
 
-import { analyze, errorSignature, similarity } from './loop-breaker.mjs';
+import { analyze, contextBlock, errorSignature, resolveThresholds, similarity } from './loop-breaker.mjs';
 
 const CASES = [
   {
@@ -179,6 +179,115 @@ const CASES = [
       { n: 2, approach: 'criterion two work', verdict: 'pass', criteria_passed: 2 },
     ] },
   },
+
+  // ------------------------------------------------- thresholds, not counters
+  {
+    name: 'legacy `breaker` thresholds are still honoured on their own',
+    stop: true, reason: 'stagnation',
+    warnings: [],
+    state: { iteration: 3, max_iterations: 12, breaker: { stagnation: 2 }, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field' },
+      { n: 2, approach: 'patch the middleware', verdict: 'fail', error_signature: 'ZodError missing field' },
+    ] },
+  },
+  {
+    name: '`breaker_thresholds` wins when both spellings are present, with a warning',
+    stop: false,
+    warnings: ['breaker_thresholds'],
+    // legacy would trip at 2; the preferred field says 9, so the loop continues.
+    state: { iteration: 3, max_iterations: 12,
+      breaker: { stagnation: 2 }, breaker_thresholds: { stagnation: 9 }, history: [
+        { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field' },
+        { n: 2, approach: 'patch the middleware', verdict: 'fail', error_signature: 'ZodError missing field' },
+      ] },
+  },
+  {
+    name: 'zeroed thresholds ("reset my counters") fall back to defaults instead of stopping',
+    stop: false,
+    warnings: ['stagnation', 'frustration', 'noProgress', 'plateau', 'thresholds, not counters'],
+    // The real-run shape: a brand-new run whose breaker block was zeroed. Every
+    // `counter >= threshold` used to read true against an empty history.
+    state: { iteration: 0, max_iterations: 14, history: [],
+      breaker: { stagnation: 0, frustration: 0, noProgress: 0, plateau: 0, similarity: 0.85 } },
+  },
+  {
+    name: 'negative thresholds fall back to defaults with a warning',
+    stop: false,
+    warnings: ['stagnation'],
+    state: { iteration: 2, max_iterations: 12, breaker_thresholds: { stagnation: -3 }, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field' },
+    ] },
+  },
+  {
+    name: 'a non-numeric threshold falls back to the default with a warning',
+    stop: false,
+    warnings: ['plateau'],
+    state: { iteration: 2, max_iterations: 12, breaker_thresholds: { plateau: null }, history: [
+      { n: 1, approach: 'criterion one work', verdict: 'pass', criteria_passed: 1 },
+    ] },
+  },
+  {
+    // similarity 0 makes THREE DIFFERENT approaches read as "the same approach
+    // retried 3x" — a wrongful stuck whose detail message lies. Refused like
+    // the count thresholds, not obeyed.
+    name: 'similarity: 0 is refused for the default; different approaches do not trip frustration',
+    stop: false,
+    warnings: ['similarity'],
+    state: { iteration: 3, max_iterations: 12, breaker_thresholds: { similarity: 0 }, history: [
+      { n: 1, approach: 'add a zod schema at the route boundary', verdict: 'fail', error_signature: 'e1 alpha' },
+      { n: 2, approach: 'rewrite the parser in the service layer', verdict: 'fail', error_signature: 'e2 beta' },
+      { n: 3, approach: 'switch the client to form encoding', verdict: 'fail', error_signature: 'e3 gamma' },
+    ] },
+  },
+  {
+    name: 'similarity above 1 is refused — it would silently disable the frustration breaker',
+    stop: true, reason: 'frustration',
+    warnings: ['similarity'],
+    state: { iteration: 3, max_iterations: 12, breaker_thresholds: { similarity: 7 }, history: [
+      { n: 1, approach: 'retry the flaky migration exactly as before', verdict: 'fail', error_signature: 'e1 alpha' },
+      { n: 2, approach: 'retry the flaky migration exactly as before', verdict: 'fail', error_signature: 'e2 beta' },
+      { n: 3, approach: 'retry the flaky migration exactly as before', verdict: 'fail', error_signature: 'e3 gamma' },
+    ] },
+  },
+  {
+    name: 'a non-object thresholds value falls back wholesale with a warning',
+    stop: false,
+    warnings: ['must be an object'],
+    state: { iteration: 1, max_iterations: 12, breaker_thresholds: 'aggressive', history: [
+      { n: 1, approach: 'first attempt', verdict: 'fail', error_signature: 'e1' },
+    ] },
+  },
+  {
+    name: 'a misspelled threshold key warns instead of silently reverting to the default',
+    stop: false,
+    warnings: ['stagnaton'],
+    state: { iteration: 1, max_iterations: 12, breaker_thresholds: { stagnaton: 9 }, history: [
+      { n: 1, approach: 'first attempt', verdict: 'fail', error_signature: 'e1' },
+    ] },
+  },
+  {
+    name: 'empty history with default thresholds trips nothing',
+    stop: false,
+    advisories: [],
+    counters: { trailing_fails: 0, stagnation: 0, frustration: 0 },
+    state: { iteration: 0, max_iterations: 12, history: [] },
+  },
+  {
+    name: 'a threshold of 1 on an empty history raises no advisory and does not throw',
+    stop: false,
+    advisories: [],
+    // `counters.stagnation === t.stagnation - 1` is 0 === 0 here: the advisory
+    // used to fire and dereference fails[0] on an empty streak.
+    state: { iteration: 0, max_iterations: 12, history: [],
+      breaker_thresholds: { stagnation: 1, frustration: 1, noProgress: 1, plateau: 1 } },
+  },
+  {
+    name: 'a threshold of 1 stops on the first failure, with the signature in the detail',
+    stop: true, reason: 'stagnation',
+    state: { iteration: 2, max_iterations: 12, breaker_thresholds: { stagnation: 1 }, history: [
+      { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field' },
+    ] },
+  },
 ];
 
 const UNITS = [
@@ -187,6 +296,23 @@ const UNITS = [
   ['signature distinguishes real differences', () => errorSignature('ZodError missing') !== errorSignature('TypeError missing')],
   ['similarity is 1 for identical text', () => similarity('run the migration script', 'run the migration script') === 1],
   ['similarity ignores short-string containment', () => similarity('fix', 'fix the parser') < 0.85],
+  ['thresholds: an absent breaker block yields the defaults',
+    () => resolveThresholds({}).thresholds.stagnation === 3 && resolveThresholds({}).warnings.length === 0],
+  ['thresholds: a zeroed field is refused but its siblings survive', () => {
+    const { thresholds } = resolveThresholds({ breaker_thresholds: { stagnation: 0, frustration: 7 } });
+    return thresholds.stagnation === 3 && thresholds.frustration === 7;
+  }],
+  ['thresholds: similarity is a ratio, not a count — 0.5 passes through untouched',
+    () => resolveThresholds({ breaker_thresholds: { similarity: 0.5 } }).thresholds.similarity === 0.5],
+  ['thresholds: a non-object breaker block is ignored, not crashed on',
+    () => resolveThresholds({ breaker: 'reset' }).thresholds.stagnation === 3],
+  ['thresholds: overrides beat both spellings', () => {
+    const state = { breaker: { stagnation: 2 }, breaker_thresholds: { stagnation: 9 } };
+    return resolveThresholds(state, { stagnation: 5 }).thresholds.stagnation === 5;
+  }],
+  ['context block survives an empty history', () => contextBlock({ iteration: 0, history: [] }).includes('first attempt')],
+  ['context block carries the state.json warning into the next prompt',
+    () => contextBlock({ iteration: 0, history: [], breaker: { stagnation: 0 } }).includes('WARNING (state.json)')],
 ];
 
 let failed = 0;
@@ -196,15 +322,26 @@ for (const [label, fn] of UNITS) {
   console.log(`${ok ? 'ok  ' : 'FAIL'}  ${label}`);
 }
 for (const c of CASES) {
-  const v = analyze(c.state);
+  let v;
+  try {
+    v = analyze(c.state);
+  } catch (e) {
+    failed++;
+    console.log(`FAIL  ${c.name} (threw ${e.message})`);
+    continue;
+  }
   const got = (v.advisories ?? []).map((a) => a.reason).filter((r) => r !== 'bookkeeping');
   const advisoriesOk = !c.advisories
     || (got.length === c.advisories.length && c.advisories.every((r) => got.includes(r)));
   const countersOk = !c.counters
     || Object.entries(c.counters).every(([k, want]) => v.counters[k] === want);
-  const ok = v.stop === c.stop && (!c.reason || v.reason === c.reason) && advisoriesOk && countersOk;
+  // `warnings: []` asserts silence; a list asserts each fragment is mentioned.
+  const warnings = v.warnings ?? [];
+  const warningsOk = !c.warnings
+    || (c.warnings.length ? c.warnings.every((frag) => warnings.some((w) => w.includes(frag))) : warnings.length === 0);
+  const ok = v.stop === c.stop && (!c.reason || v.reason === c.reason) && advisoriesOk && countersOk && warningsOk;
   if (!ok) failed++;
-  const detail = ok ? '' : ` (got stop=${v.stop} reason=${v.reason} advisories=[${got}] counters=${JSON.stringify(v.counters)})`;
+  const detail = ok ? '' : ` (got stop=${v.stop} reason=${v.reason} advisories=[${got}] counters=${JSON.stringify(v.counters)} warnings=${JSON.stringify(warnings)})`;
   console.log(`${ok ? 'ok  ' : 'FAIL'}  ${c.name}${detail}`);
 }
 

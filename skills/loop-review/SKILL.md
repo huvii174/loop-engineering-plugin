@@ -1,6 +1,6 @@
 ---
 name: loop-review
-description: Review gate run after all success criteria pass and before a goal is marked done — parallel fresh-context reviewers per dimension (correctness, spec fidelity and its scope-creep check, security, test adequacy), adversarial refutation of findings, per-dimension reporting with no cross-dimension reranking, confirmed findings fed back into the loop as normal iterations. Load when the loop reaches "criteria met" or when running the review gate.
+description: Review gate run after all success criteria pass and before a goal is marked done — parallel fresh-context reviewers per dimension (correctness, spec fidelity and its scope-creep check, security, test adequacy, simplification), adversarial refutation of findings, per-dimension reporting with no cross-dimension reranking, confirmed findings fed back into the loop as normal iterations. Load when the loop reaches "criteria met" or when running the review gate.
 ---
 
 # Loop Review — the Review Gate

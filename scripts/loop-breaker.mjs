@@ -29,6 +29,10 @@
  *   One counter short of a threshold prints an ADVISORY and still exits 0. The
  *   loop gets one warning it can act on before the breaker takes the decision
  *   away from it.
+ *
+ * Thresholds live in `breaker_thresholds`; the older `breaker` spelling is still
+ * read when that field is absent. Nothing in state.json ever holds a counter —
+ * see resolveThresholds() for why the distinction had to be made loud.
  */
 
 import { readFileSync } from 'node:fs';
@@ -46,6 +50,77 @@ export function pluginVersion() {
 }
 
 const DEFAULTS = { stagnation: 3, frustration: 3, noProgress: 5, plateau: 4, similarity: 0.85 };
+
+/** Thresholds counted in whole iterations — each must be a positive integer-ish
+ *  number. (`similarity` is a 0..1 ratio and is not one of these.) */
+const COUNT_THRESHOLDS = ['stagnation', 'frustration', 'noProgress', 'plateau'];
+
+/**
+ * Resolve the thresholds a check runs against.
+ *
+ * `breaker` reads like a set of live counters and is not one: it has always
+ * held THRESHOLDS. A real run wrote `{stagnation: 0, frustration: 0, ...}`
+ * meaning "reset my counters", which made every `counter >= threshold`
+ * comparison true and tripped a stop on the first check of a brand-new run.
+ * `breaker_thresholds` is the honest spelling and wins wherever both appear;
+ * `breaker` is still honoured alone so existing state files keep working.
+ *
+ * A count threshold that is not a positive number is refused, not obeyed — a
+ * breaker that stops everything and a breaker that stops nothing are both
+ * broken, and silently accepting either hides the mistake in the state file.
+ *
+ * Warnings are returned rather than printed: analyze() stays pure, and main()
+ * puts them on stderr where a mis-set field is visible without changing stdout.
+ */
+export function resolveThresholds(state = {}, overrides = {}) {
+  const warnings = [];
+  const preferred = state.breaker_thresholds;
+  const legacy = state.breaker;
+  if (preferred && legacy) {
+    warnings.push(
+      'state.json sets both `breaker_thresholds` and the legacy `breaker` — ' +
+      'using `breaker_thresholds` and ignoring `breaker`. Delete `breaker`.'
+    );
+  }
+  const configured = preferred ?? legacy ?? {};
+  const isObject = configured && typeof configured === 'object' && !Array.isArray(configured);
+  if (!isObject && (preferred !== undefined || legacy !== undefined)) {
+    warnings.push(
+      `thresholds must be an object, got ${JSON.stringify(configured)} — using the defaults.`
+    );
+  }
+  const raw = isObject ? configured : {};
+
+  const t = { ...DEFAULTS };
+  for (const [k, v] of Object.entries(raw)) {
+    if (!(k in DEFAULTS)) {
+      warnings.push(
+        `unknown threshold \`${k}\` ignored — known fields: ${Object.keys(DEFAULTS).join(', ')}. ` +
+        'A misspelled field silently reverts its real one to the default.'
+      );
+      continue;
+    }
+    if (COUNT_THRESHOLDS.includes(k) && !(Number.isFinite(v) && v > 0)) {
+      warnings.push(
+        `ignoring \`${k}: ${JSON.stringify(v)}\` in favour of the default ${DEFAULTS[k]} — ` +
+        'this field holds thresholds, not counters — counters are computed from history on every run.'
+      );
+      continue;
+    }
+    // similarity is a 0..1 ratio, not a count: 0 makes every approach "the
+    // same approach" and trips frustration on three different attempts; >1 or
+    // a non-number silently disables the frustration breaker.
+    if (k === 'similarity' && !(Number.isFinite(v) && v > 0 && v <= 1)) {
+      warnings.push(
+        `ignoring \`similarity: ${JSON.stringify(v)}\` in favour of the default ${DEFAULTS.similarity} — ` +
+        'similarity is a ratio in (0, 1].'
+      );
+      continue;
+    }
+    t[k] = v;
+  }
+  return { thresholds: { ...t, ...overrides }, warnings };
+}
 
 // --------------------------------------------------------------- normalization
 
@@ -164,8 +239,23 @@ function trailingFails(entries) {
 
 // ---------------------------------------------------------------------- checks
 
+/**
+ * The newest failure, or an empty stand-in. A counter can reach its threshold
+ * with nothing in `fails` — a threshold of 1 makes the "one short" advisory fire
+ * at 0 — so every read of the newest failure has to survive an empty streak.
+ * Reporting a stop with no detail beats throwing a TypeError at the caller.
+ */
+function newestFail(fails) {
+  return fails[0] ?? {};
+}
+
+/** Quote a recorded field for a message, when there is one to quote. */
+function quoted(value) {
+  return value ? `: "${value}"` : ' (nothing recorded)';
+}
+
 export function analyze(state, overrides = {}) {
-  const t = { ...DEFAULTS, ...(state.breaker ?? {}), ...overrides };
+  const { thresholds: t, warnings } = resolveThresholds(state, overrides);
   const entries = markTransparency(countable(state));
   const fails = trailingFails(entries);
   const iteration = Number(state.iteration ?? 0);
@@ -227,37 +317,37 @@ export function analyze(state, overrides = {}) {
   // Most actionable first.
   if (maxIterations > 0 && iteration >= maxIterations) {
     return {
-      stop: true, status: 'stopped-max-iterations', reason: 'max-iterations', counters,
+      stop: true, status: 'stopped-max-iterations', reason: 'max-iterations', counters, warnings,
       detail: `iteration ${iteration} reached the budget of ${maxIterations}`,
     };
   }
   if (counters.stagnation >= t.stagnation) {
     return {
-      stop: true, status: 'stuck', reason: 'stagnation', counters,
-      detail: `the same failure repeated ${counters.stagnation}x consecutively: "${fails[0].error_signature}"`,
+      stop: true, status: 'stuck', reason: 'stagnation', counters, warnings,
+      detail: `the same failure repeated ${counters.stagnation}x consecutively${quoted(newestFail(fails).error_signature)}`,
     };
   }
   if (counters.frustration >= t.frustration) {
     return {
-      stop: true, status: 'stuck', reason: 'frustration', counters,
-      detail: `the same approach was retried ${counters.frustration}x consecutively: "${fails[0].approach}"`,
+      stop: true, status: 'stuck', reason: 'frustration', counters, warnings,
+      detail: `the same approach was retried ${counters.frustration}x consecutively${quoted(newestFail(fails).approach)}`,
     };
   }
   if (counters.trailing_fails >= t.noProgress) {
     return {
-      stop: true, status: 'stuck', reason: 'no-progress', counters,
+      stop: true, status: 'stuck', reason: 'no-progress', counters, warnings,
       detail: `${counters.trailing_fails} consecutive failures with no pass in between (each failing differently)`,
     };
   }
   if (counters.plateau >= t.plateau && plateauWindowHasPass(entries, t.plateau)) {
     const scored = entries.filter((h) => typeof h.criteria_passed === 'number');
     return {
-      stop: true, status: 'stuck', reason: 'plateau', counters,
+      stop: true, status: 'stuck', reason: 'plateau', counters, warnings,
       detail: `criteria-met count stuck at ${scored[scored.length - 1].criteria_passed} for ${counters.plateau} iterations despite passing verdicts — busy but not progressing`,
     };
   }
   return {
-    stop: false, status: state.status ?? 'running', reason: null, counters,
+    stop: false, status: state.status ?? 'running', reason: null, counters, warnings,
     detail: 'no breaker tripped',
     advisories: advisories(entries, fails, counters, t),
   };
@@ -274,28 +364,31 @@ function plateauWindowHasPass(entries, size) {
  * prompt carries these, so the loop gets a chance to change approach itself
  * before the breaker takes the choice away. Advisories never change the exit
  * code — a nudge that can halt a run is a stop condition wearing a disguise.
+ *
+ * A counter of 0 raises nothing: with a threshold of 1 the "one short" test is
+ * `0 === 0`, and a warning about a streak that has not started yet is noise.
  */
 function advisories(entries, fails, counters, t) {
   const out = [];
-  if (counters.stagnation === t.stagnation - 1) {
+  if (counters.stagnation > 0 && counters.stagnation === t.stagnation - 1) {
     out.push({
       reason: 'stagnation',
-      detail: `the same failure has repeated ${counters.stagnation}x ("${fails[0].error_signature}") — one more trips the breaker. Attack a different cause, not the same one again.`,
+      detail: `the same failure has repeated ${counters.stagnation}x${quoted(newestFail(fails).error_signature)} — one more trips the breaker. Attack a different cause, not the same one again.`,
     });
   }
-  if (counters.frustration === t.frustration - 1) {
+  if (counters.frustration > 0 && counters.frustration === t.frustration - 1) {
     out.push({
       reason: 'frustration',
-      detail: `the same approach has been retried ${counters.frustration}x ("${fails[0].approach}") — one more trips the breaker. Change the approach, not its wording.`,
+      detail: `the same approach has been retried ${counters.frustration}x${quoted(newestFail(fails).approach)} — one more trips the breaker. Change the approach, not its wording.`,
     });
   }
-  if (counters.trailing_fails === t.noProgress - 1) {
+  if (counters.trailing_fails > 0 && counters.trailing_fails === t.noProgress - 1) {
     out.push({
       reason: 'no-progress',
       detail: `${counters.trailing_fails} consecutive failures with no pass in between — one more trips the breaker. Consider a smaller increment or a probe that yields evidence instead of a fix.`,
     });
   }
-  if (counters.plateau === t.plateau - 1 && plateauWindowHasPass(entries, t.plateau - 1)) {
+  if (counters.plateau > 0 && counters.plateau === t.plateau - 1 && plateauWindowHasPass(entries, t.plateau - 1)) {
     out.push({
       reason: 'plateau',
       detail: `${counters.plateau} iterations have passed verification without closing a criterion — one more trips the breaker. Target a success criterion directly.`,
@@ -348,6 +441,9 @@ export function contextBlock(state) {
     `bookkeeping ${a.counters.bookkeeping}`
   );
   for (const adv of a.advisories ?? []) lines.push(`- ADVISORY (${adv.reason}): ${adv.detail}`);
+  // A mis-set threshold field distorts every counter above it, so the next
+  // iteration's prompt says so rather than quietly carrying skewed numbers.
+  for (const w of a.warnings ?? []) lines.push(`- WARNING (state.json): ${w}`);
   return lines.join('\n');
 }
 
@@ -369,12 +465,20 @@ function main(argv) {
     return 1;
   }
 
+  // Warnings go to stderr in every mode: stdout is the verdict a caller parses,
+  // and a broken threshold field must not be able to hide inside it.
+  const warn = (list) => {
+    for (const w of list ?? []) process.stderr.write(`loop-breaker: ${w}\n`);
+  };
+
   if (args.includes('--context')) {
+    warn(resolveThresholds(state).warnings);
     process.stdout.write(contextBlock(state) + '\n');
     return 0;
   }
 
   const verdict = analyze(state);
+  warn(verdict.warnings);
   if (args.includes('--json')) {
     process.stdout.write(JSON.stringify(verdict, null, 2) + '\n');
   } else if (verdict.stop) {

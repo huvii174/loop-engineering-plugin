@@ -1,5 +1,90 @@
 # Changelog
 
+## 0.15.0 — 2026-09-01
+
+**Memory splits into an index and a body, so a store can grow without growing
+what every run reads.** Measured against a real six-month store: `learnings.md`
+had reached 152KB (341 entries) and `decisions.md` 321KB (479 entries), and
+`/design` and `/breakdown` read them whole — roughly 120K tokens — before asking
+their first question. The same store's indexes come to 115KB, and that is now
+the *only* half read by default, with every body still reachable by anchor. The
+gate then reports both indexes as over budget, which is correct and is the point:
+this store's own header has admitted a consolidation pass was overdue since
+2026-08-18, and 341 entries across clusters of near-duplicates is what being
+overdue looks like. The budget is a signal to consolidate, never a quota to
+delete toward.
+
+- **`learnings/` and `decisions/` are now trees.** Every entry has an ID and
+  splits in two: a **trigger** (one ≤200-char index line naming the *symptom* a
+  future session will recognise — error text, API and file names) and a **body**
+  (uncapped: mechanism, measurements, run refs, reached by its `### L-NNN`
+  anchor). Only the index is read by default, so growth lands in the cold half,
+  and the index grows with the number of *kinds* of problem rather than the
+  number of incidents. Learnings shard by their `[type]` tag, which is a closed
+  set, so an entry's file needs no judgement call at write time; decisions shard
+  by epic, so an epic's decisions retire with it, while supersede links — a
+  graph, not a tree — carry the trace-back.
+- **The budget moved from counting entries to measuring the index.** The old
+  "~60 durable one-liners" capped the wrong thing: a long-lived project is
+  supposed to accumulate entries, and counting lines let each line grow into a
+  paragraph (the real store had single "one-liners" over 2,000 characters).
+  `memory-gate` now checks index size and trigger-line length mechanically, the
+  way the breaker checks counters.
+- **Maintenance gains a sixth outcome, `Demote`** — drop an entry's trigger,
+  keep its body — and a **consolidation trigger**: a `[type][area]` cluster past
+  ~5 trigger lines is due to become one principle naming its cases. That is how
+  a store gets better as it gets bigger instead of merely longer.
+- **`memory-recall` injects bodies, not just pointers.** A pointer the model does
+  not follow is a recall that did not happen, so a strong match now arrives with
+  its body already inlined (2 max, capped), and weaker matches arrive as a
+  trigger plus the exact runnable `grep`. Keyword matching also drops to 3
+  characters with word-boundary checking, which was letting through neither
+  technical acronyms (`ssl`, `api`, `dom`) nor most Vietnamese syllables — a
+  non-English prompt recalled almost nothing.
+- **Recall is now accounted for, not assumed.** Injected IDs are logged to
+  `.loop/.recall-log`; every iteration record and design gate carries a
+  `Recall:` line marking each ID `applied` or `dismissed` with a reason;
+  `loop-verifier` gained a seventh check for it. Those dismissal reasons feed a
+  new **hit-rate pass** in `/memory` that finds the store's real failure — a
+  correct entry whose trigger is written in the author's vocabulary instead of
+  the reader's, so nobody is ever handed it.
+- **`scripts/migrate-memory.mjs`** converts a flat store one-way (`--dry-run`
+  first; sources are renamed to `*.pre-migration`, never deleted). Verified on
+  the real store: 820 entries in, 820 out, IDs unique, no index line over 200
+  characters.
+- **`scripts/loop-archive.mjs`** replaces the prose archive steps that had
+  produced `archive/<run>/iterations/iterations/` in the wild, and adds a hygiene
+  sweep (session-tool droppings had settled in 7 places under `.loop/`, including
+  inside `memory/`) plus retention for closed epics' runs.
+- **`state.json.breaker` → `breaker_thresholds`.** The field held thresholds and
+  read like counters, so a run once wrote `{stagnation: 0, …}` meaning "reset the
+  counters" and made every `counter >= threshold` compare true, tripping a stop
+  on the first check of a fresh run — and crashing in the stagnation branch
+  rather than reporting cleanly. The breaker now prefers the new name, still
+  reads the old one, refuses non-positive thresholds with a message saying what
+  the field is, and no branch dereferences an empty failure list.
+- **`.loop/parallel.json`** records worktree slices when a run fans out, and
+  `/status` renders it — a fanned-out run that lost its session used to need a
+  hand-written resume file to find its own worktrees.
+- **Hardened by a two-critic adversarial review before release.** `.recall-log`
+  became an explicit **inbox** (each Record accounts its IDs and empties it;
+  the `Recall:` lines are the durable history) after both critics showed stale
+  cross-run entries would wrongly block stops and poison the contract — whose
+  verify-time check also moved onto the verifier payload, since the iteration
+  record does not exist yet when the verifier runs. A parser bug that silently
+  *duplicated* every entry in a section whose heading directly follows the
+  file's first bullet was fixed — reconciliation could not see it, because both
+  sides of the count came from the same doubled list. The gate no longer counts
+  the scratch template's example line (inside an HTML comment) as live scratch,
+  no longer accepts prose starting "Recalling" as a `Recall:` line, and an
+  entry-less scaffolded index beside a still-unmigrated flat store no longer
+  silences it — the design gate now also says to migrate first. `similarity`
+  joined the sanitized thresholds (0 made three different approaches read as
+  the same one), misspelled threshold keys warn instead of silently reverting,
+  and `--force` re-migration appends to an existing `scratch/run.md` instead of
+  destroying live scratch. Epic archiving now retires the epic's
+  `decisions/<slug>/` bodies with it, closing the loop the sharding was for.
+
 ## 0.14.0 — 2026-08-25
 
 **Four ideas adapted from [mattpocock/skills](https://github.com/mattpocock/skills).**

@@ -99,4 +99,4 @@ what the tenth man still worries about even after approving>
   current code is itself stale — flag it instead of citing it.
 - This is round-bounded: after 2 REVISE rounds, remaining disagreement goes to
   the user verbatim (both positions), and their ruling is recorded in
-  `decisions.md`. You do not get a veto.
+  `decisions/`. You do not get a veto.

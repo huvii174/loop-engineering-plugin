@@ -123,5 +123,5 @@ goal.
   loop's verifier gates on evidence, and a vibe produces none.
 - Ask in behaviour terms — what the user should observe, rather than which
   function to write.
-- Cite memory instead of asking. An answer already in `decisions.md` or a
-  learnings entry gets confirmed ("still true?"), never re-asked.
+- Cite memory instead of asking. An answer already in `decisions/` or a
+  learnings entry gets confirmed by ID ("D-759-017 still true?"), never re-asked.

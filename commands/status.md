@@ -62,9 +62,18 @@ advisory is the breaker's last warning before it fires; a dashboard that hides
 it is worse than no dashboard. Reading the state is read-only, so this is safe
 here.
 
-## 6. One-paragraph plain summary
+## 6. Parallel slices (only when `.loop/parallel.json` exists)
+
+A table from that manifest: slice | worktree | branch | brief | state file. It is
+written when a run fans out across git worktrees, and it is what makes a fanned-out
+run resumable after a session dies mid-flight — each slice's own `.loop/state.json`
+holds its position, and this manifest is the only record of where those live.
+Flag any entry whose worktree path no longer exists.
+
+## 7. One-paragraph plain summary
 
 Where the loop stands, iterations used vs budget, and the single next action.
+When parallel slices are open, the next action names which slice.
 
 Keep the whole output compact — this is a dashboard, not a report. Do not modify
 any `.loop/` files from this command; it is read-only.

@@ -85,11 +85,16 @@ For each item in topo order:
 `.loop/` holds ONE active goal; two items in one working tree would corrupt
 state. When the user asks for parallelism: identify items whose dependencies
 are met and that touch disjoint files (compare design work-breakdowns), create
-one git worktree per item (each gets its own `.loop/`), run each item's
-design→loop there, and merge back sequentially — merge conflicts or test
-failures on merge send the item back to its worktree with the conflict context
-injected. Recommend parallel only when ≥2 independent items each of tier
-`small`+; the coordination overhead is real. Default remains sequential.
+one git worktree per item (each gets its own `.loop/`), **write
+`.loop/parallel.json` in the dispatching tree the moment you fan out** — the
+manifest format, and the slice-prefix agent-naming rules that travel with it,
+live in the `loop-engineering:loop-engine` skill; a fan-out without the manifest
+is unresumable the moment this session dies — then run each item's
+design→loop there, and merge back sequentially, deleting each slice's manifest
+entry as it merges. Merge conflicts or test failures on merge send the item back
+to its worktree with the conflict context injected. Recommend parallel only when
+≥2 independent items each of tier `small`+; the coordination overhead is real.
+Default remains sequential.
 
 ## Reporting
 

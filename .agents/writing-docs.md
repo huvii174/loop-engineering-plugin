@@ -93,7 +93,9 @@ the anchor in half:
 
 **breaker** · **gate** · **frontier** · **tier** · **anchor** (external anchor)
 · **tenth man** · **scratch** · **rollup** · **brief** · **red** (a check that
-goes red on this defect) · **tight** (fast, deterministic, agent-runnable).
+goes red on this defect) · **tight** (fast, deterministic, agent-runnable) ·
+**trigger** (a memory entry's index line — the symptom half) · **body** (the
+entry behind it) · **demote** (drop an entry's trigger, keep its body).
 
 Hunt for passages that collapse into one of these. A triad spelled out at three
 sites is a passage begging to become a token.

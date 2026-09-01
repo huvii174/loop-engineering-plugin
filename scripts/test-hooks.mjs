@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,29 @@ function project({ state, goal, learnings, memoryFresh } = {}) {
       const old = (Date.now() - 3600_000) / 1000;
       utimesSync(join(dir, '.loop', 'memory', 'learnings.md'), old, old);
     }
+  }
+  return dir;
+}
+
+/**
+ * Build the index/body memory tree.
+ * `index` and `bodies` are written verbatim; `bodies` maps a filename under
+ * learnings/ to its content.
+ */
+function tree(dir, { index, bodies = {}, decisionsIndex, scratchRun } = {}) {
+  const mem = join(dir, '.loop', 'memory');
+  mkdirSync(join(mem, 'learnings'), { recursive: true });
+  if (index !== undefined) writeFileSync(join(mem, 'learnings', '_index.md'), index);
+  for (const [name, content] of Object.entries(bodies)) {
+    writeFileSync(join(mem, 'learnings', name), content);
+  }
+  if (decisionsIndex !== undefined) {
+    mkdirSync(join(mem, 'decisions'), { recursive: true });
+    writeFileSync(join(mem, 'decisions', '_index.md'), decisionsIndex);
+  }
+  if (scratchRun !== undefined) {
+    mkdirSync(join(mem, 'scratch'), { recursive: true });
+    writeFileSync(join(mem, 'scratch', 'run.md'), scratchRun);
   }
   return dir;
 }
@@ -225,6 +248,241 @@ function proj(opts) { const d = project(opts); cleanup.push(d); return d; }
   r = runHook('memory-recall.mjs', { cwd: big, prompt: 'debug the redis eviction maxmemory problem' });
   const injected = r.out.split('\n').filter((l) => l.trim().startsWith('- [')).length;
   check('recall: budget cap — at most 5 entries injected', r.code === 0 && injected === 5, `injected=${injected}`);
+}
+
+// ------------------------------------------- memory-recall: index/body layout
+{
+  const INDEX = `# Learnings index
+
+## Never store
+- secrets, tokens, credentials
+
+## gotcha
+- L-042 [gotcha][frontend] outside-click handler misses every target; jsdom passes, real browser does not
+- L-017 [gotcha][testing] DB fixture leg ERRORs at setup with "rejected SSL upgrade"
+
+## pattern
+- L-003 [pattern][api] validate at the route boundary — keeps handlers unit-testable
+`;
+  const GOTCHAS = `### L-042 [gotcha][frontend] outside-click must listen on pointerdown
+
+A hand-rolled outside-click handler MUST listen on pointerdown, never click.
+Radix sets pointer-events none on body, so the browser retargets click to <html>.
+
+### L-017 [gotcha][testing] DB fixture leg needs three env vars
+
+DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
+`;
+
+  const t = tree(proj({}), { index: INDEX, bodies: { 'gotchas.md': GOTCHAS } });
+  cleanup.push(t);
+
+  // two keywords hit L-042's trigger -> strong enough to spend a body on
+  let r = runHook('memory-recall.mjs', { cwd: t, prompt: 'the outside-click handler breaks in the real browser but jsdom is green' });
+  check('recall/tree: strong match inlines the body',
+    r.code === 0 && r.out.includes('L-042') && r.out.includes('pointer-events none on body'), `out=${r.out.slice(0, 160)}`);
+  check('recall/tree: injection asks for a Recall: verdict', r.out.includes('Recall:'), `out=${r.out.slice(0, 120)}`);
+
+  // one weak keyword -> trigger + a runnable grep, no body spent
+  r = runHook('memory-recall.mjs', { cwd: t, prompt: 'rework the route boundary' });
+  check('recall/tree: weak match points with a runnable grep',
+    r.code === 0 && r.out.includes("grep -rA 20 '^### L-003'") && !r.out.includes('pointer-events none'), `out=${r.out.slice(0, 160)}`);
+
+  // the log is what the Recall: line is checked against
+  const log = readFileSync(join(t, '.loop', '.recall-log'), 'utf8');
+  check('recall/tree: injected IDs are logged', /\tL-0\d\d\t/.test(log), `log=${log.slice(0, 80)}`);
+  check('recall/tree: log lives outside memory/ (cannot fake a memory write)',
+    !existsSync(join(t, '.loop', 'memory', '.recall-log')), 'found log inside memory/');
+
+  // an index present means the flat file is not also scanned
+  const both = tree(proj({ learnings: '# Learnings\n- [gotcha][x] legacy flat entry about pointerdown handlers\n' }),
+    { index: INDEX, bodies: { 'gotchas.md': GOTCHAS } });
+  cleanup.push(both);
+  r = runHook('memory-recall.mjs', { cwd: both, prompt: 'outside-click handler jsdom browser' });
+  check('recall/tree: index wins over the legacy flat file', !r.out.includes('legacy flat entry'), `out=${r.out.slice(0, 120)}`);
+
+  // half-migrated store: learnings has an index, decisions is still flat
+  const half = tree(proj({}), { index: INDEX, bodies: { 'gotchas.md': GOTCHAS } });
+  writeFileSync(join(half, '.loop', 'memory', 'decisions.md'),
+    '# Decisions\n- **kept the zod parser** — rationale; alternatives rejected: yup (run-1)\n');
+  cleanup.push(half);
+  r = runHook('memory-recall.mjs', { cwd: half, prompt: 'why did we keep the zod parser' });
+  check('recall: a root without an index still falls back to its flat file',
+    r.code === 0 && r.out.includes('zod parser'), `out=${r.out.slice(0, 140)}`);
+}
+
+// -------------------------------------------- memory-recall: index parsing
+{
+  // The comment guard's load-bearing case: every index (and the scratch
+  // template) carries an EXAMPLE ENTRY inside its HTML comment. Without the
+  // guard that decoy parses as a real entry and gets injected on the topic it
+  // happens to mention. (An earlier fixture tested "absorption into the bullet
+  // above", which the open/close discipline already prevents on its own — a
+  // mutation run proved that assertion vacuous, twice.)
+  const INDEX = `# Learnings index
+
+## Never store
+- secrets, tokens, credentials
+<!-- One line per entry, <=200 chars. Format example:
+  - L-999 [gotcha][example] decoy example trigger about zod parsing
+-->
+
+## gotcha
+- L-042 [gotcha][x] a real trigger about zod parsing
+`;
+  const t = tree(proj({}), { index: INDEX });
+  cleanup.push(t);
+
+  let r = runHook('memory-recall.mjs', { cwd: t, prompt: 'help with zod parsing here' });
+  check('recall: a decoy entry inside an index comment is not injected',
+    r.code === 0 && r.out.includes('L-042') && !r.out.includes('L-999'), `out=${r.out.slice(0, 160)}`);
+
+  // hand-wrapped entries must still join — that is what the continuation rule is for
+  const WRAPPED = `# Learnings index
+## gotcha
+- L-050 [gotcha][tiptap] suggestion exit clears plugin state
+  but never document content, so Escape leaves the trigger range behind
+`;
+  const w = tree(proj({}), { index: WRAPPED });
+  cleanup.push(w);
+  r = runHook('memory-recall.mjs', { cwd: w, prompt: 'escape leaves the trigger range behind in the document' });
+  check('recall: a hand-wrapped entry is still matched on its continuation line',
+    r.code === 0 && r.out.includes('L-050'), `out=${r.out.slice(0, 160)}`);
+}
+
+// ------------------------------------------------ memory-recall: keyword rules
+{
+  // Every fixture below isolates the 3-char rule: each prompt's ONLY qualifying
+  // keywords are 3 characters long, so the whole block goes red if the minimum
+  // returns to 4. A prompt carrying an incidental long word would pass either
+  // way and prove nothing.
+  const INDEX = `# Learnings index
+## env
+- L-001 [env][gateway] the api gateway returns 500 when upstream refuses the upgrade
+## gotcha
+- L-002 [gotcha][ui] rapid double-click on the toolbar duplicates the row
+- L-003 [gotcha][ui] nút lưu bị mờ sau khi đổi tab
+`;
+  const t = tree(proj({}), { index: INDEX });
+  cleanup.push(t);
+
+  let r = runHook('memory-recall.mjs', { cwd: t, prompt: 'api' });
+  check('recall: 3-char acronym reaches the store', r.code === 0 && r.out.includes('L-001'), `out=${r.out.slice(0, 120)}`);
+  check('recall: 3-char keyword does not match inside a longer word (api ⊄ rapid)',
+    !r.out.includes('L-002'), `out=${r.out.slice(0, 120)}`);
+
+  r = runHook('memory-recall.mjs', { cwd: t, prompt: 'nút lưu bị mờ' });
+  check('recall: an all-Vietnamese prompt reaches the store',
+    r.code === 0 && r.out.includes('L-003'), `out=${r.out.slice(0, 120)}`);
+}
+
+// --------------------------------------------------- memory-gate: index budget
+{
+  const bloated = '# Learnings index\n## gotcha\n' +
+    Array.from({ length: 400 }, (_, i) =>
+      `- L-${String(i).padStart(3, '0')} [gotcha][x] ${'a'.repeat(120)}`).join('\n') + '\n';
+  const over = tree(proj({ state: { status: 'done' } }), { index: bloated });
+  cleanup.push(over);
+  let r = runHook('memory-gate.mjs', { cwd: over });
+  check('gate: index over the reading budget → block stop',
+    r.code === 2 && r.err.includes('reading budget'), `code=${r.code} err=${r.err.slice(0, 120)}`);
+
+  const longLine = '# Learnings index\n## gotcha\n- L-001 [gotcha][x] ' + 'b'.repeat(300) + '\n';
+  const wide = tree(proj({ state: { status: 'done' } }), { index: longLine });
+  cleanup.push(wide);
+  r = runHook('memory-gate.mjs', { cwd: wide });
+  check('gate: over-long trigger line → block stop',
+    r.code === 2 && r.err.includes('exceed 200 chars'), `code=${r.code} err=${r.err.slice(0, 120)}`);
+
+  const ok = tree(proj({ state: { status: 'done' } }), { index: '# Learnings index\n## gotcha\n- L-001 [gotcha][x] short trigger\n' });
+  cleanup.push(ok);
+  r = runHook('memory-gate.mjs', { cwd: ok });
+  check('gate: index within budget → allow stop', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+}
+
+// -------------------------------------------- memory-gate: recall accountability
+{
+  const mk = (record) => {
+    const d = tree(proj({ state: { status: 'done' } }), { index: '# Learnings index\n## gotcha\n- L-001 [gotcha][x] short\n' });
+    mkdirSync(join(d, '.loop', 'iterations'), { recursive: true });
+    writeFileSync(join(d, '.loop', 'iterations', '0001.md'), record);
+    writeFileSync(join(d, '.loop', '.recall-log'), '2026-09-01T00:00:00Z\tL-001\t2\tinlined\n');
+    cleanup.push(d);
+    return d;
+  };
+
+  let r = runHook('memory-gate.mjs', { cwd: mk('# Iteration 0001\n- **Actions:** did a thing\n') });
+  check('gate: recall injected but never judged → block stop',
+    r.code === 2 && r.err.includes('Recall:'), `code=${r.code} err=${r.err.slice(0, 140)}`);
+
+  r = runHook('memory-gate.mjs', { cwd: mk('# Iteration 0001\n- **Recall:** L-001 dismissed (no DB work here)\n') });
+  check('gate: Recall: line present → allow stop', r.code === 0, `code=${r.code} err=${r.err.slice(0, 140)}`);
+
+  r = runHook('memory-gate.mjs', { cwd: mk('# Iteration 0001\nRecalling the plan from yesterday, we did a thing.\n') });
+  check('gate: prose starting "Recalling" is not a Recall: line → still blocks',
+    r.code === 2 && r.err.includes('Recall'), `code=${r.code} err=${r.err.slice(0, 140)}`);
+}
+
+// -------------------------------------- memory-gate: scratch template comment
+{
+  // The migrated scratch/run.md carries an example entry inside an HTML
+  // comment; counting it as live scratch would block every stop forever.
+  const templated = tree(proj({ state: { status: 'done' } }), {
+    index: '# Learnings index\n## gotcha\n- L-001 [gotcha][x] short\n',
+    scratchRun: '<!--\nRaw notes. Format:\n  - [<type>][<area>] <fact> — <why> (YYYY-MM-DD)\n-->\n',
+  });
+  cleanup.push(templated);
+  let r = runHook('memory-gate.mjs', { cwd: templated });
+  check('gate: scratch template comment alone is not live scratch → allow stop',
+    r.code === 0, `code=${r.code} err=${r.err.slice(0, 140)}`);
+
+  const templatedLive = tree(proj({ state: { status: 'done' } }), {
+    index: '# Learnings index\n## gotcha\n- L-001 [gotcha][x] short\n',
+    scratchRun: '<!--\n  - [<type>][<area>] <fact> — <why> (YYYY-MM-DD)\n-->\n- [gotcha][zod] a real live note (run-x, iter 1)\n',
+  });
+  cleanup.push(templatedLive);
+  r = runHook('memory-gate.mjs', { cwd: templatedLive });
+  check('gate: live entry after the template comment still blocks',
+    r.code === 2 && r.err.includes('scratch'), `code=${r.code} err=${r.err.slice(0, 140)}`);
+}
+
+// ------------------------------- memory-recall: scaffolded-over-legacy backstop
+{
+  // An entry-less index (headings + Never store only) beside a populated flat
+  // file is the scaffold-over-legacy mistake — the flat store must stay live.
+  const d = tree(proj({ learnings: '# Learnings\n## Gotchas\n- [gotcha][zod] legacy fact about zod parsing — why (run-1)\n' }), {
+    index: '# Learnings index\n\n## Never store\n- secrets, tokens, credentials\n\n## gotcha\n\n## pattern\n',
+  });
+  cleanup.push(d);
+  const r = runHook('memory-recall.mjs', { cwd: d, prompt: 'debug the zod parsing failure' });
+  check('recall: entry-less index beside a populated flat file → flat file stays live',
+    r.code === 0 && r.out.includes('legacy fact'), `out=${r.out.slice(0, 140)}`);
+}
+
+// ------------------------------------------- memory-gate: scratch in tree layout
+{
+  const dirty = tree(proj({ state: { status: 'stuck' } }), {
+    index: '# Learnings index\n## gotcha\n- L-001 [gotcha][x] short\n',
+    scratchRun: '- [gotcha][zod] raw unreviewed note (run-x, iter 2)\n',
+  });
+  cleanup.push(dirty);
+  const r = runHook('memory-gate.mjs', { cwd: dirty });
+  check('gate: undistilled scratch/run.md → block stop',
+    r.code === 2 && r.err.includes('scratch'), `code=${r.code} err=${r.err.slice(0, 120)}`);
+}
+
+// ------------------------------------ memory-gate: a tool dropping is not a write
+{
+  const LEARN = '# Learnings\n## Gotchas\n- [gotcha][auth] cookies need sameSite lax — Safari drops them (run-1, iter 2)\n';
+  const d = proj({ learnings: LEARN });
+  cleanup.push(d);
+  ageMemory(d);
+  // session tooling drops state inside memory/ — it must not read as "captured"
+  mkdirSync(join(d, '.loop', 'memory', '.omc', 'state'), { recursive: true });
+  writeFileSync(join(d, '.loop', 'memory', '.omc', 'state', 'session.jsonl'), '{}\n');
+  const r = runHook('memory-gate.mjs', { cwd: d, transcript_path: transcript(d, { edits: 2, errors: 3 }) });
+  check('gate: .omc dropping under memory/ does not silence the ad-hoc nudge',
+    r.code === 2 && r.err.includes('adhoc.md'), `code=${r.code} err=${r.err.slice(0, 120)}`);
 }
 
 // ------------------------------------------------------- loop-reminder: digest

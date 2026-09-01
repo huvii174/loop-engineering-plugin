@@ -130,7 +130,7 @@ would do.
 
 Reasoning failures: a Chain of Thought instruction aimed at a reasoning-native
 model, which degrades it, so remove it; a brief that contradicts a decision in
-`.loop/memory/decisions.md`, which gets flagged and resolved rather than
+`.loop/memory/decisions/`, which gets flagged and resolved rather than
 quietly overridden.
 
 Agentic failures: no starting state, no target state, no progress protocol, an

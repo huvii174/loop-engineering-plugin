@@ -1,15 +1,47 @@
 ---
 name: loop-memory
-description: Compounding memory contract for loop runs — three memory shapes (one-line learnings, full solution entries, epic rollups), three tiers with a promotion gate, recall budget, and five-outcome maintenance. Load when running /loop-engineering:memory or /loop-engineering:breakdown, or writing anything under .loop/memory/.
+description: Compounding memory contract for loop runs — index/body split so the store grows without growing what every run reads, four memory shapes, three tiers with a promotion gate, recall under a budget with recorded applied/dismissed verdicts, and six-outcome maintenance. Load when running /loop-engineering:memory or /loop-engineering:breakdown, or writing anything under .loop/memory/.
 ---
 
 # Loop Memory — Compounding Contract
 
 **Every run must leave the system smarter than it found it.** Memory compounds
 only if future sessions actually read it and it actually changes their behavior —
-so it must be small, grounded, deduplicated, and shaped to fit what it records.
+so it must be grounded, deduplicated, shaped to fit what it records, and cheap to
+read at the moment of need.
 
-## Three shapes — one size does not fit all knowledge
+## Index and body — growth without cost
+
+A long-lived project's knowledge grows without bound. What must stay flat is the
+cost of **reading it by default**. So every durable entry splits in two:
+
+| Half | Holds | Cost | Cap |
+|---|---|---|---|
+| **trigger** — one line in `_index.md` | the symptom a future session will recognise | loaded every recall | 200 chars |
+| **body** — the entry under its `###` anchor | mechanism, measurements, run refs | read only when its trigger fires | none |
+
+The index is the store's map and the only part loaded by default; a body is
+reached by anchor (`grep -A 20 '^### L-042' .loop/memory/learnings/gotchas.md`).
+
+**A flat store predates this layout and must be migrated, never scaffolded
+over.** A populated `learnings.md` or `decisions.md` beside a fresh `_index.md`
+is the worst state the store can be in: the index is authoritative to every
+reader, so the flat file's knowledge silently stops being recalled. On meeting
+one, run `node "$CLAUDE_PLUGIN_ROOT"/scripts/migrate-memory.mjs --dry-run`, show
+the plan, then migrate — the sources are renamed to `*.pre-migration`, not
+deleted. Until that has happened, do not create either `_index.md`.
+Growth therefore lands in bodies, which are unbounded, while the index grows only
+with the number of distinct **kinds** of problem — which grows far slower than
+the number of incidents, and slower still once the consolidation trigger below
+starts firing.
+
+**A trigger names the symptom, not the lesson.** Write the error text, API name
+or file name a future session will have in front of it — that string is what
+recall matches on. "Assertions must be narrow" matches nothing; `"rejected SSL
+upgrade" / all route tests ERROR at fixture setup` matches the session that needs
+it.
+
+## Four shapes — one size does not fit all knowledge
 
 A one-line entry is right for knowledge where *the action itself is the
 knowledge*. It is wrong for a debugging journey (loses the reasoning that tells a
@@ -17,15 +49,15 @@ future session **whether the entry even applies**), for design decisions (loses
 the rejected alternatives), and for dead hypotheses (loses the *why*, which is
 the only part that prevents a re-run).
 
-| Shape | File | Holds |
+| Shape | Location | Holds |
 |---|---|---|
-| One-liner | `learnings.md` | Environment facts, gotchas, reusable patterns |
+| Learning | `learnings/_index.md` + `learnings/<type>.md` | Environment facts, gotchas, reusable patterns, dead ends |
 | Full entry | `solutions/<slug>.md` | Non-trivial solved problems — the narrative |
+| Decision | `decisions/_index.md` + `decisions/<epic>/item-<N>.md` | Choices made, with rejected alternatives |
 | Epic rollup | `epics/<epic-slug>.md` | What a multi-sub-goal epic taught, per item + retro |
-| Decisions | `decisions.md` | Choices made, with rejected alternatives |
 
 **Escalation rule (a rule, not a vibe).** A learning is written as a full
-`solutions/` entry when ANY of these holds; otherwise it stays a one-liner:
+`solutions/` entry when ANY of these holds; otherwise it stays a learning:
 
 - **(a)** the fix took more than 2 iterations, **or**
 - **(b)** the root cause differed from the first hypothesis, **or**
@@ -38,9 +70,9 @@ durable is expensive to promote.**
 
 | Tier | Written when | Trust | Location |
 |---|---|---|---|
-| **scratch** | mid-iteration, immediately | low — unreviewed | `learnings.md` → `## Scratch (this run)` |
+| **scratch** | mid-iteration, immediately | low — unreviewed | `scratch/run.md` |
 | **scratch (ad-hoc)** | during non-loop work, immediately | low — unreviewed | `scratch/adhoc.md` |
-| **durable** | end of run, after distilling | medium | the shape-appropriate file above |
+| **durable** | end of run, after distilling | medium | the shape-appropriate location above |
 | **host** | after an explicit gate | high — affects every session | host `CLAUDE.md` |
 
 **The gate:** nothing reaches the host project's `CLAUDE.md` without either the
@@ -49,49 +81,70 @@ claim is evidence-backed. `CLAUDE.md` is loaded into every future session — an
 unreviewed line there is a permanent tax. Scratch entries are **never** promoted
 directly; they must survive distillation into durable first.
 
-## `learnings.md`
+## `learnings/`
+
+```
+learnings/
+  _index.md      triggers, grouped by type — the only file read by default
+  env.md         gotchas.md        patterns.md       dead-ends.md
+```
+
+Bodies shard by the entry's **type**, which is a closed set, so the tag an entry
+already carries decides its file with no judgement call at write time.
+
+`_index.md`:
 
 ```markdown
-# Learnings
+# Learnings index
 
 ## Never store
 - secrets, tokens, credentials, connection strings
 - customer or personal data, internal client names
 - anything the user marked confidential
 
-## Environment
-- [env][build] run `pnpm test --filter api`, not the full suite — full suite needs docker, times out (run-2026-07-29, iter 3)
+## env
+- L-001 [env][docker] worktree DB tests all ERROR at fixture setup / "rejected SSL upgrade" — needs 3 env vars
 
-## Gotchas
-- [gotcha][auth] session cookies need `sameSite: lax` in dev — Safari drops them otherwise (run-2026-07-29, iter 4)
+## gotcha
+- L-042 [gotcha][frontend] outside-click handler misses every target; jsdom passes, real browser does not
+```
 
-## Patterns
-- [pattern][api] validate at the route boundary, not in handlers — keeps handlers unit-testable (run-2026-07-29, iter 2)
+`gotchas.md`:
 
-## What didn't work
-- [dead][cache] resolver-layer caching — invalidation needs a cross-tenant event the system doesn't emit (run-2026-07-29, iter 5)
+```markdown
+### L-042 [gotcha][frontend] outside-click must listen on pointerdown
 
-## Scratch (this run)
-- raw note, unreviewed — distilled or deleted at end of run
+A hand-rolled outside-click handler MUST listen on `pointerdown`, never `click`.
+Any Radix primitive with `disableOutsidePointerEvents` sets `pointer-events: none`
+on `document.body` while open, so a real browser RETARGETS `pointerup`/`click` up
+to `<html>` and every `target.closest(...)` guard answers "no". jsdom implements
+no retargeting, so a broken handler passes its tests. (run-2026-08-25-uds-postmerge)
 ```
 
 Rules:
+
 - **`## Never store` is data, not prose** — a declared list can be checked before
-  every write; a rule buried in narrative gets skipped. Read it first, every time.
-- One line, imperative, **with the why attached** — a learning without a why gets
-  ignored or misapplied.
+  every write; a rule buried in narrative gets skipped. It sits at the top of the
+  index, so it is read before every write. Read it first, every time.
+- Every entry has an **ID** (`L-NNN`, assigned in order, never reused) carried by
+  both halves. The ID is how a run cites what it applied.
 - **Tag every entry `[type][area]`** so retrieval is greppable by field
   (`grep '\[gotcha\]\[auth\]'`) instead of by hope. The type set is **closed**:
-  `env`, `gotcha`, `pattern`, `dead`. A fifth type is a change to this skill,
-  not a choice made mid-run — an open vocabulary is a store nobody can grep.
+  `env`, `gotcha`, `pattern`, `dead` — and it is also the shard key. A fifth type
+  is a change to this skill, not a choice made mid-run.
   Area is the module/domain in this repo's own vocabulary.
+- **The why lives in the body, the symptom in the trigger.** A body without a why
+  gets misapplied; a trigger that states the why instead of the symptom never
+  fires.
 - **Ground claims**: behavioral claims about code cite `file:line`; unverified
   claims are attributed ("per this run's conclusion…"), never stated as fact.
   Cite **PR numbers, not bare SHAs** — SHAs are rewritten by squash/rebase merges.
 - Tag with run id + iteration so stale entries can be audited.
-- **Budget ~60 durable one-liners.** Over budget → run maintenance before adding.
-  Past ~40, prefer moving narrative-shaped entries out to `solutions/`.
-- `## Scratch` must be **empty at the end of every run** — distilled or deleted.
+- **The budget is on the index, not the store.** Keep every index line inside 200
+  chars; when the index itself passes ~40KB, run maintenance. Bodies are
+  uncapped — an entry that outgrows a paragraph is a `solutions/` candidate by
+  the escalation rule, not a line to trim.
+- `scratch/` must be **empty at the end of every run** — distilled or deleted.
 
 ## `solutions/<slug>.md`
 
@@ -125,9 +178,58 @@ stale_reason: <required when status: stale>
 For `type: knowledge` (a pattern or decision rather than a defect), replace
 Symptoms/What-didn't-work with **Context** and **Guidance**.
 
+**The slug is a trigger too.** Recall scores a solution on its filename and
+frontmatter, so the slug must carry at least one concrete technical term someone
+would type — `docker-cp-writes-through-a-bind-mount`, `jsdom-lacks-range-rects`.
+A slug made only of abstractions (`a-bound-that-admits-its-own-defeat`) is a good
+title and an unreachable entry; put the epigram in the `#` heading, where it costs
+nothing, and spend the filename on words that match.
+
 **`status: stale` is a legitimate terminal state.** When evidence is insufficient
 to rewrite an entry that reality has outgrown, mark it stale with a reason rather
 than guessing at a rewrite — err toward stale-marking over incorrect action.
+
+## `decisions/`
+
+```
+decisions/
+  _index.md              one line per decision, grouped by epic
+  durable.md             cross-epic and process decisions
+  <epic-slug>/item-<N>.md
+```
+
+Records both breakdown sign-off decisions **and** per-sub-goal design-gate
+choices. A design decision that lives only in an archived `design.md` is
+effectively lost — the design gate must mirror it here.
+
+```markdown
+### D-759-017 · active · 2026-08-31 · item 35
+**Decision:** raise `breaker_thresholds.plateau` from 4 to 9 for this item's loop
+**Rationale:** the design's 7 work groups mean the whole-toolbar criteria can only
+close after the last group, so `criteria_passed` correctly stays 0 through
+iterations 1-6 despite verified progress
+**Alternatives rejected:** leaving the default (false-trips mid-migration);
+re-slicing the item into 7 goals (the criteria are only checkable together)
+```
+
+- **ID and status on the anchor line.** `D-<epickey>-NNN`, plus `active` or
+  `superseded-by D-…`. A decision is never edited into a different conclusion:
+  it is superseded by a new entry, and the old one keeps its record.
+- **Sharding is by epic, tracing is by ID.** The directory makes an epic's
+  decisions cheap to load and cheap to retire; supersede links carry the history,
+  which is a graph and does not fit a directory.
+- **`Alternatives rejected:` is mandatory, not a nicety.** A decision recorded
+  without what it beat invites the next session to re-litigate it, which is the
+  exact failure this file exists to prevent: the reader cannot tell whether the
+  obvious-looking alternative was weighed and lost or never considered. If nothing
+  was genuinely rejected, the entry is not a decision — it is a fact, and it
+  belongs in `learnings/`. Write the alternative even when it embarrasses the
+  decision; especially then.
+- **Retire with the epic.** When an epic is archived, its decisions directory
+  goes with it — `loop-archive.mjs epic` performs that move; promote a decision
+  still binding on future work to `durable.md` FIRST, with its ID preserved and
+  its index line regrouped, then drop the retired epic's group from
+  `_index.md`.
 
 ## `epics/<epic-slug>.md`
 
@@ -162,28 +264,14 @@ The **Slice verdict** column is the feedback signal `epic-planner` needs: it is
 the difference between "we shipped the epic" and "we learned how to slice this
 kind of epic".
 
-## `decisions.md`
+**A rollup cites; it does not restate.** What an item decided lives in
+`decisions/`, and the rollup names the ID (`decided at D-759-017`). Retelling it
+here creates the second home that drifts.
 
-```markdown
-# Decisions
-- **<decision>** — <rationale>; alternatives rejected: <x, y> (run-id / epic-slug)
-```
+## Maintenance — six outcomes per entry
 
-Records both breakdown sign-off decisions **and** per-sub-goal design-gate
-choices. A design decision that lives only in an archived `design.md` is
-effectively lost — the design gate must mirror it here.
-
-**`alternatives rejected:` is mandatory, not a nicety.** A decision recorded
-without what it beat invites the next session to re-litigate it, which is the
-exact failure this file exists to prevent: the reader cannot tell whether the
-obvious-looking alternative was weighed and lost or never considered. If nothing
-was genuinely rejected, the entry is not a decision — it is a fact, and it
-belongs in `learnings.md`. Write the alternative even when it embarrasses the
-decision; especially then.
-
-## Maintenance — five outcomes per entry
-
-Classify every touched entry as **Keep / Update / Consolidate / Replace / Delete**:
+Classify every touched entry as **Keep / Update / Consolidate / Replace / Demote /
+Delete**:
 
 - **Keep** — prefer no-write Keep; leave the entry byte-identical, no
   cosmetic churn.
@@ -194,17 +282,26 @@ Classify every touched entry as **Keep / Update / Consolidate / Replace / Delete
   just create drift risk?" Overlapping entries drift apart and contradict each
   other — worse than one slightly longer entry.
 - **Replace** — the premise is obsolete but the topic is live: rewrite.
-- **Delete, don't archive** — no archive section; git history is the archive.
-  Before deleting, check the problem domain is actually gone (code removed ≠
-  problem gone).
+- **Demote** — the entry is still true but no longer earns an index line: fold
+  its trigger into a neighbouring entry's and keep the body. The store keeps the
+  knowledge; the index gets shorter. **Prefer Demote to Delete** for anything
+  grounded — a body costs nothing until its trigger fires.
+- **Delete** — reserved for entries that are *wrong* or whose problem domain is
+  gone. Check the domain is actually gone (code removed ≠ problem gone). No
+  archive section: git history is the archive.
 
-**Dead ends are kept as guardrails, not as history.** A `[dead]` line or a
-`solutions/` entry whose value is "we tried this and it failed" earns its place
-only while that path is still tempting: someone reading the current code could
-plausibly propose it again. When the premise is gone — the API it used no longer
-exists, a later decision settled the question, the subsystem was deleted — the
-entry stops preventing anything and starts costing recall budget. Delete it.
-"We might want the history" is what git is for.
+**The consolidation trigger.** When one `[type][area]` cluster passes ~5 index
+lines, consolidating it is due: state the principle they share as one entry, and
+keep each case as a body (or a `solutions/` entry) that the principle names. This
+is the mechanism that keeps the index growing with kinds rather than incidents,
+and it is how a store gets *better* as it gets bigger instead of merely longer.
+
+**Dead ends are kept as guardrails, not as history.** A `[dead]` entry earns its
+place only while that path is still tempting: someone reading the current code
+could plausibly propose it again. When the premise is gone — the API it used no
+longer exists, a later decision settled the question, the subsystem was deleted —
+the entry stops preventing anything. Demote it, and Delete only when it would
+mislead. "We might want the history" is what git is for.
 
 **Never edit an entry into a different conclusion.** An entry that reality has
 overtaken is Replaced (same topic, rewritten premise) or superseded by a new
@@ -224,9 +321,26 @@ a run still matters, it is promoted into `memory/` at that run's stop — that i
 the whole point of the memory step firing on every stop, success or not.
 
 Cross-entry **contradictions are more urgent than staleness** — they actively
-mislead. Resolve them first. Refresh order matters: one-liners and `solutions/`
+mislead. Resolve them first. Refresh order matters: learnings and `solutions/`
 first, epic rollups second — a stale learning makes an epic retro look more valid
 than it is.
+
+## Trigger quality — the hit-rate pass
+
+Every recall is recorded (see below), which turns the store's own usage into the
+signal for maintaining it. Once per memory run, read the `Recall:` lines across
+the run's iteration records — the durable half; `.recall-log` is an inbox each
+Record step empties — and act on three patterns:
+
+| Pattern | Reading | Action |
+|---|---|---|
+| injected, then `dismissed` for the same reason repeatedly | the trigger over-matches | narrow it — add the discriminating symptom |
+| applied often | the trigger works | Keep, byte-identical |
+| never injected while its topic was worked on | the trigger misses | rewrite it in the words the work actually used |
+
+A never-injected entry is the common failure and it is invisible without this
+pass: the knowledge is right, the trigger is written in the author's vocabulary
+instead of the reader's.
 
 ## Calibration — worked examples, because the rules alone do not decide
 
@@ -254,11 +368,15 @@ Consolidate:
 
 - Three `[gotcha][auth]` lines describing the same cookie behavior from three runs. Apply the Retrieval-Value Test: a future search wants one entry, not three near-duplicates that will drift apart and start contradicting each other.
 
-**Do not prune toward a quota.** The ~60-line budget is a signal to run
-maintenance, not a target to reach by deleting whatever is line 61. Classify
-every entry in scope, group analogous ones under one principle, and record
-genuinely borderline calls in the run's memory summary so the next maintenance
-pass inherits the reasoning instead of re-deriving it.
+Demote:
+
+- A measured, grounded `[gotcha][mutation]` entry from an epic that closed, whose subsystem still exists. The body stays where it is; its index line folds into the neighbouring mutation-testing trigger. Nothing is lost, and the index is one line shorter.
+
+**Do not prune toward a quota.** The index budget is a signal to run maintenance,
+not a target to reach by demoting whatever is last. Classify every entry in
+scope, group analogous ones under one principle, and record genuinely borderline
+calls in the run's memory summary so the next maintenance pass inherits the
+reasoning instead of re-deriving it.
 
 ## Prose that survives recall
 
@@ -297,31 +415,65 @@ every entry before it is written:
 
 ## Recall — the other half of compounding, under a budget
 
-"Retrieval without a budget is just context spam." Recall procedure:
+"Retrieval without a budget is just context spam." Recall reads the index, then
+reaches for bodies:
 
-1. **Grep by tag/frontmatter field first**, using this repo's own vocabulary —
+1. **Read `_index.md`** (learnings, and decisions for the epic in scope). This is
+   the map; it is cheap and it is the default.
+2. **Grep by tag/frontmatter field**, using this repo's own vocabulary —
    `[gotcha][auth]`, `area: auth`, `root_cause: async-timing`. Field search beats
    reading files.
-2. Self-correct breadth: more than ~25 candidates → narrow; fewer than 3 →
-   broaden to full-text search.
-3. **Load at most 5 entries per iteration** (default budget; raise only for a
-   deliberately broad task). Prefer the most specific matches over the most recent.
-4. Nothing found is useful signal too — say so, and note the current work may be
+3. Self-correct breadth: more than ~25 candidate triggers → narrow; fewer than 3
+   → broaden to full-text search across bodies.
+4. **Open the body of every trigger that matches the work in hand**, up to 5 per
+   iteration (default budget; raise only for a deliberately broad task). Prefer
+   the most specific matches over the most recent.
+5. Nothing found is useful signal too — say so, and note the current work may be
    worth capturing.
+
+**A matched trigger is not a recall.** The index line exists to tell you a body
+exists; acting on the trigger alone applies half an entry, and the half it drops
+is the one that says whether the entry applies at all. Read the body or record
+why you did not.
 
 Who recalls what:
 - `/loop-engineering:breakdown` reads `epics/*` **before** proposing a split, and
-  `decisions.md` before interviewing
-- `/loop-engineering:design` reads `learnings.md` + relevant `solutions/` before
-  interviewing — never re-ask an answered question
+  `decisions/_index.md` + the relevant epic's decisions before interviewing
+- `/loop-engineering:design` reads `learnings/_index.md` + the bodies its seed
+  dimensions match + relevant `solutions/` before interviewing — never re-ask an
+  answered question
 - `/loop-engineering:loop` recalls before iteration 1 and applies gotchas
   proactively
-- `/loop-engineering:memory` reads existing entries before merging (dedupe)
+- `/loop-engineering:memory` reads existing entries before merging (dedupe), and
+  runs the hit-rate pass
 
 **Recall discipline:** memory is **supplementary context, never primary
 evidence** — current code and command output outrank past notes. A past learning
 must never silently override present evidence; when they conflict, surface the
 conflict and fix the memory rather than echoing it.
+
+### The recall record — `applied` or `dismissed`, never silent
+
+Every entry the recall hook injects is logged to `.loop/.recall-log` — outside
+`memory/`, so that recording a read can never make the store look written to.
+**The log is an inbox**: every iteration record (and every design gate) carries
+a **`Recall:`** line accounting for each ID currently in it, and then empties
+it — the accounted line is the durable record, and an unemptied inbox makes the
+next record answer for injections that were already judged:
+
+```markdown
+- **Recall:** L-042 applied (listener switched to pointerdown); L-017 dismissed
+  (that entry is about the DB fixture leg; this item has no DB work)
+```
+
+Both verdicts are first-class. `dismissed` with a reason is a real judgement and
+the cheapest half of this contract to write; what is forbidden is silence, which
+is indistinguishable from never having read it. `loop-verifier` checks the line
+against `.recall-log` and reports a missing ID the way it reports a criterion
+with no evidence.
+
+This record is also the input to the hit-rate pass above: dismissal reasons are
+how a bad trigger gets found.
 
 ## Ambient memory — when no slash command is running
 
@@ -333,10 +485,11 @@ deterministic hooks — the push half of the system:
   `.loop/memory/` holds, so the session knows the store exists and can grep it
   deliberately.
 - **Recall, layer 2 (targeted):** every user prompt is keyword-matched against
-  learnings/decisions/solutions/ad-hoc scratch; the top matches (respecting the
-  5-entry budget) are injected as context, labeled supplementary. Keyword grep,
-  not semantics — treat an empty injection as "nothing matched", never as
-  "nothing exists".
+  the indexes, `solutions/` slugs and ad-hoc scratch. The **strongest matches
+  arrive with their body already inlined** — no follow-up read to forget — and
+  weaker ones arrive as a trigger plus the exact `grep` that opens the body.
+  Keyword match, not semantics — treat an empty injection as "nothing matched",
+  never as "nothing exists".
 - **Capture (nudge, once):** at session stop, if files were edited while
   working through errors and nothing under `.loop/memory/` was touched, the
   memory-gate blocks once and asks for ONE line in `scratch/adhoc.md`:
@@ -349,4 +502,4 @@ deterministic hooks — the push half of the system:
 one-liners there and never write durable files directly — distillation needs
 judgment, and it happens in `/loop-engineering:memory` (which harvests this file
 even when run standalone, with no loop record). The file must be empty after
-every memory run: distilled or deleted, same rule as `## Scratch (this run)`.
+every memory run: distilled or deleted, same rule as the run scratch.
