@@ -11,7 +11,7 @@
  * things into, and the finished archive is checked for exactly that shape — so
  * the doubling cannot be recreated, not even by a retry after a crash.
  *
- *   node loop-archive.mjs run     [--id <run_id>] [--dir .loop] [--dry-run] [--force]
+ *   node loop-archive.mjs run     [--id <run_id>] [--dir .loop] [--dry-run] [--force] [--allow-gaps]
  *   node loop-archive.mjs epic    --slug <epic-slug> [--dir .loop] [--dry-run] [--force]
  *   node loop-archive.mjs hygiene [--dir .loop] [--dry-run]
  *   node loop-archive.mjs prune   [--keep 20] [--dir .loop] [--dry-run] [--yes]
@@ -29,7 +29,7 @@
  * write, and nothing else. It never empties an archive directory wholesale.
  */
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /** What a finished run leaves behind at the top of `.loop/`. */
@@ -52,12 +52,15 @@ export function safeName(name) {
 }
 
 /**
- * A refusal, and whether --force is an answer to it. Only "the destination is
- * occupied" is; a missing epic rollup or an interrupted archive has to be looked
- * at by a person. Tagging it here rather than matching on the message keeps the
- * two from drifting apart.
+ * A refusal, and which flag is an answer to it. `--force` answers only "the
+ * destination is occupied"; `--allow-gaps` answers only "records are missing",
+ * and recording that loss is the point of the flag rather than waiving it.
+ * A missing epic rollup or an interrupted archive has to be looked at by a
+ * person. Tagging each here rather than matching on the message keeps the
+ * flag and its refusal from drifting apart.
  */
-const refusal = (text, { waivedByForce = false } = {}) => ({ text, waivedByForce });
+const refusal = (text, { waivedByForce = false, waivedByAllowGaps = false } = {}) =>
+  ({ text, waivedByForce, waivedByAllowGaps });
 
 function isDir(p) {
   try { return statSync(p).isDirectory(); } catch { return false; }
@@ -122,7 +125,7 @@ function scanDroppings(root) {
  * "merge" — dropping items into it, or renaming onto it — are the two ways the
  * nested directory appears.
  */
-export function planRun(dir, runId, { force = false } = {}) {
+export function planRun(dir, runId, { force = false, allowGaps = false } = {}) {
   const refusals = [];
   const notes = [];
   const id = runId ?? runIdFromState(dir);
@@ -162,7 +165,44 @@ export function planRun(dir, runId, { force = false } = {}) {
   if (existsSync(staging)) {
     refusals.push(refusal(`${staging} is left over from an interrupted archive — inspect and remove it, then retry`));
   }
-  return { kind: 'run', actions, refusals, notes, target, staging, force };
+
+  // A run is archived once and read forever. 42 of 308 iteration records in a
+  // real archive did not exist while state.json still counted them, and 16 runs
+  // had none at all — the evidence half of "done" was gone and nothing had said
+  // so. Refusing here is the last moment anyone can still find them.
+  const gaps = missingRecords(dir);
+  if (gaps.length) {
+    refusals.push(refusal(
+      `state.json's history names ${gaps.length} iteration(s) with no record on disk: ${gaps.join(', ')}. ` +
+      `Write them, or archive with --allow-gaps to record the loss in the archived state.json instead of losing it.`,
+      { waivedByAllowGaps: true }
+    ));
+  }
+  return { kind: 'run', actions, refusals, notes, target, staging, force, gaps, allowGaps };
+}
+
+/**
+ * Iteration numbers `history` claims that `iterations/` does not hold.
+ *
+ * Read from `history` rather than from `iteration`, so a run whose counter also
+ * drifted still reports against something recorded per entry.
+ */
+export function missingRecords(dir) {
+  const raw = readIfExists(join(dir, 'state.json'));
+  if (!raw) return [];
+  let history;
+  try { history = JSON.parse(raw).history; } catch { return []; }
+  if (!Array.isArray(history) || !history.length) return [];
+  let present;
+  try {
+    present = new Set(readdirSync(join(dir, 'iterations'))
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => String(parseInt(f, 10))));
+  } catch { present = new Set(); }
+  return history
+    .map((h) => Number(h.n))
+    .filter((n) => Number.isFinite(n) && !present.has(String(n)))
+    .map((n) => String(n).padStart(4, '0'));
 }
 
 /** The run id recorded by the run itself, when `--id` was not given. */
@@ -200,6 +240,25 @@ function applyRun(plan) {
     throw new Error(`${target} already exists — pass force to replace its entries (staged at ${staging})`);
   }
   assertNoDoubling(target);
+  recordGaps(target, plan.gaps);
+}
+
+/**
+ * Write the missing-record numbers into the archived state, so the loss is data
+ * rather than an absence a later reader has to notice. The reader of an archive
+ * cannot tell "iteration 10 was never written" from "iteration 10 never ran"
+ * unless the archive says which.
+ */
+function recordGaps(target, gaps) {
+  if (!gaps?.length) return;
+  const p = join(target, 'state.json');
+  const raw = readIfExists(p);
+  if (!raw) return;
+  try {
+    const state = JSON.parse(raw);
+    state.missing_iteration_records = gaps;
+    writeFileSync(p, JSON.stringify(state, null, 2) + '\n');
+  } catch { /* an unparseable state file was already the caller's problem */ }
 }
 
 // ------------------------------------------------------------------ epic
@@ -398,7 +457,7 @@ export function applyPlan(plan) {
 
 const USAGE = `loop-archive — deterministic filing for .loop/
 
-  loop-archive run     [--id <run_id>] [--dir .loop] [--dry-run] [--force]
+  loop-archive run     [--id <run_id>] [--dir .loop] [--dry-run] [--force] [--allow-gaps]
   loop-archive epic    --slug <epic-slug> [--dir .loop] [--dry-run] [--force]
   loop-archive hygiene [--dir .loop] [--dry-run]
   loop-archive prune   [--keep 20] [--dir .loop] [--dry-run] [--yes]`;
@@ -413,10 +472,11 @@ function main(argv) {
   const has = (flag) => args.includes(flag);
   const dir = get('--dir', '.loop');
   const force = has('--force');
+  const allowGaps = has('--allow-gaps');
 
   let plan;
   switch (cmd) {
-    case 'run': plan = planRun(dir, get('--id', null), { force }); break;
+    case 'run': plan = planRun(dir, get('--id', null), { force, allowGaps }); break;
     case 'epic': plan = planEpic(dir, get('--slug', null)); break;
     case 'hygiene': plan = planHygiene(dir); break;
     case 'prune': plan = planPrune(dir, Number(get('--keep', '20'))); break;
@@ -427,7 +487,8 @@ function main(argv) {
 
   // --force answers "the destination is occupied" and nothing else; a missing
   // epic rollup or an interrupted archive still has to be looked at.
-  const refusals = plan.refusals.filter((r) => !(force && r.waivedByForce));
+  const refusals = plan.refusals.filter(
+    (r) => !(force && r.waivedByForce) && !(allowGaps && r.waivedByAllowGaps));
   if (refusals.length) {
     for (const r of refusals) process.stderr.write(`loop-archive: ${r.text}\n`);
     return 1;

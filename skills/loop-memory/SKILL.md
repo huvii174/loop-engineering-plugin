@@ -446,6 +446,21 @@ exists; acting on the trigger alone applies half an entry, and the half it drops
 is the one that says whether the entry applies at all. Read the body or record
 why you did not.
 
+**What the auto-recall hook spends a body slot on.** Two of five injections
+arrive with their body inlined, and three rules decide which — all measured from
+the store itself, none hand-tuned:
+
+| Rule | Why |
+|---|---|
+| A keyword matching over 15% of index lines is dropped before scoring | Generic words rank the generic entry. One "Not fixed (minor)" note took 34 of 127 injections — 27% of every budget — on the strength of `document`, `status`, `query` |
+| At the score threshold, the entry's `[area]` must appear in the prompt | An `ONLY when editing document_instances.py` prefix is prose; keyword matching does not read it. A clearly strong match still stands on its own |
+| An ID the last 10 records dismissed 3+ times loses its slot, not its listing | The hit-rate pass rewrites that trigger once per memory run; between those, the entry keeps arriving |
+
+`solutions/` entries are injected under the ID `S:<slug>` — the slug the records
+already write by hand — so they reach `.recall-log`, the verifier's check 7 and
+the hit-rate pass like every other entry. Before that they logged as `id: null`,
+which meant the deepest tier spent budget and left no trace to maintain it by.
+
 Who recalls what:
 - `/loop-engineering:breakdown` reads `epics/*` **before** proposing a split, and
   `decisions/_index.md` + the relevant epic's decisions before interviewing

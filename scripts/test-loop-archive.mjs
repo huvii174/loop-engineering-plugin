@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,14 +32,18 @@ function scratch() {
 }
 
 /** A `.loop/` holding one finished run, plus whatever extras a case needs. */
-function loopDir({ runId = 'run-2026-08-17-pmA3b-walkers', iterations = 3, epic = null } = {}) {
+function loopDir({ runId = 'run-2026-08-17-pmA3b-walkers', iterations = 3, epic = null, history = null, skipRecords = [] } = {}) {
   const dir = join(scratch(), '.loop');
   mkdirSync(join(dir, 'iterations'), { recursive: true });
   writeFileSync(join(dir, 'goal.md'), '# Goal\n');
   writeFileSync(join(dir, 'design.md'), '# Design\n');
   writeFileSync(join(dir, 'prompt.md'), '# Prompt\n');
-  writeFileSync(join(dir, 'state.json'), JSON.stringify({ status: 'done', run_id: runId, ...(epic ? { epic } : {}) }));
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({
+    status: 'done', run_id: runId, ...(epic ? { epic } : {}),
+    ...(history ? { history } : {}),
+  }));
   for (let i = 1; i <= iterations; i++) {
+    if (skipRecords.includes(i)) continue;
     writeFileSync(join(dir, 'iterations', String(i).padStart(4, '0') + '.md'), `# iter ${i}\n`);
   }
   return dir;
@@ -120,6 +124,29 @@ function skip(name, why) {
   r = archive('run', '--dir', dir, '--id', 'run-x');
   check('run: nothing left to archive is refused, not a no-op success',
     r.code === 1 && r.err.includes('nothing to archive'), `code=${r.code} err=${r.err}`);
+
+  // 42 of 308 iteration records in a real archive did not exist while state.json
+  // still counted them. Archiving is the last moment anyone can still find them.
+  const HIST = [1, 2, 3, 4].map((n) => ({ n, verdict: 'pass', criteria_passed: n }));
+  const gapped = loopDir({ runId: 'run-gapped', iterations: 4, history: HIST, skipRecords: [2, 4] });
+  r = archive('run', '--dir', gapped);
+  check('run: history naming records that do not exist is refused',
+    r.code === 1 && r.err.includes('0002, 0004'), `code=${r.code} err=${r.err}`);
+  check('run: the gap refusal wrote nothing', existsSync(join(gapped, 'goal.md')));
+
+  r = archive('run', '--dir', gapped, '--allow-gaps');
+  const gappedState = r.code === 0
+    ? JSON.parse(readFileSync(join(gapped, 'archive', 'run-gapped', 'state.json'), 'utf8'))
+    : {};
+  check('run: --allow-gaps archives and records the loss as data',
+    r.code === 0 && JSON.stringify(gappedState.missing_iteration_records) === JSON.stringify(['0002', '0004']),
+    `code=${r.code} err=${r.err} recorded=${JSON.stringify(gappedState.missing_iteration_records)}`);
+
+  const whole = loopDir({ runId: 'run-whole', iterations: 3, history: [1, 2, 3].map((n) => ({ n, verdict: 'pass' })) });
+  r = archive('run', '--dir', whole);
+  check('run: a complete history archives without the flag',
+    r.code === 0 && !('missing_iteration_records' in JSON.parse(readFileSync(join(whole, 'archive', 'run-whole', 'state.json'), 'utf8'))),
+    `code=${r.code} err=${r.err}`);
 
   const fresh = loopDir();
   r = archive('run', '--dir', fresh, '--id', '../escape');
