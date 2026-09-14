@@ -87,6 +87,23 @@ in prose and asked a script to count it; only one of those two contracts held.
   other tier transition fires on an event, and this one waited on a judgement
   nobody was asked to make. The gate guarded the approval; nothing guarded the
   proposal.
+- **`solutions/` entries get a stable handle, so a slug can be renamed.**
+  Identity and name were the same thing: an entry was addressed by its filename,
+  and renaming a slug — the fix the hit-rate pass prescribes most often for a
+  trigger made of abstractions — broke every inbound reference. A real store
+  measured the trap: 65 of 66 entries carry inbound references, 285 in total,
+  and the four renames it had already scheduled would have broken 33 of them.
+  The cost of the fix was protecting the broken trigger from being fixed, which
+  is why the pass recorded those four as "deferred rather than done blind".
+  `id: S-NNN` is now the handle and never changes, the slug stays the filename
+  and stays a trigger, and `aliases:` carries former names so recall still
+  matches the old vocabulary and the hit-rate pass can join a renamed entry to
+  its own dismissal history. `migrate-memory.mjs --solutions` assigns them —
+  deterministic by `date` then filename, idempotent, never reusing a taken
+  number — and the 285 existing slug references keep working untouched, so the
+  migration is additive rather than a rewrite. The handle brings one new failure
+  mode with it, named rather than hidden: two parallel runs can allocate the same
+  number, and `memory-lint` blocks on a duplicate.
 - **Recall spends its budget on what discriminates.** A keyword matching over
   15% of index lines is dropped before scoring, so the store computes its own
   stopwords; at the score threshold an entry's `[area]` must appear in the

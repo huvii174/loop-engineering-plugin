@@ -700,6 +700,70 @@ function printReport({ files, report }, { dryRun }) {
   w(reconciliation(report, { dryRun }).message);
 }
 
+/**
+ * Give every `solutions/` entry a stable numeric handle.
+ *
+ * Identity and name were the same thing: an entry was addressed by its filename,
+ * so renaming a slug — which is exactly the fix the hit-rate pass prescribes for
+ * a trigger made of abstractions — broke every inbound reference. A real store
+ * measured the trap: 65 of 66 entries carry inbound references, 285 in total,
+ * and the four renames the store had already scheduled would have broken 33 of
+ * them. The cost of the fix was protecting the broken trigger from being fixed.
+ *
+ * `id:` is the handle and never changes. The slug stays the filename and stays a
+ * trigger, free to be rewritten; `aliases:` carries the names it used to have,
+ * so the hit-rate pass can still join a renamed entry to its own history.
+ *
+ * Numbering is deterministic — by `date:` then filename — so two people running
+ * this on the same store get the same answer, and a re-run is a no-op.
+ */
+export function planSolutionIds(dir) {
+  const sdir = join(dir, 'solutions');
+  let files;
+  try { files = readdirSync(sdir).filter((f) => f.endsWith('.md') && f !== '_index.md'); }
+  catch { return { assignments: [], taken: new Set(), skipped: [] }; }
+
+  const entries = files.map((f) => {
+    const text = readFileSync(join(sdir, f), 'utf8');
+    const fm = /^---\n([\s\S]*?)\n---/.exec(text);
+    const head = fm ? fm[1] : '';
+    return {
+      file: f,
+      text,
+      hasFrontmatter: Boolean(fm),
+      id: (/^id:\s*(S-\d+)\s*$/m.exec(head) || [])[1] ?? null,
+      date: (/^date:\s*(\S+)/m.exec(head) || [])[1] ?? '9999-99-99',
+    };
+  });
+
+  const taken = new Set(entries.map((e) => e.id).filter(Boolean));
+  let next = 1;
+  const nextFree = () => {
+    while (taken.has(`S-${String(next).padStart(3, '0')}`)) next++;
+    const id = `S-${String(next).padStart(3, '0')}`;
+    taken.add(id);
+    return id;
+  };
+
+  const assignments = [];
+  const skipped = [];
+  for (const e of entries.sort((a, b) => a.date.localeCompare(b.date) || a.file.localeCompare(b.file))) {
+    if (e.id) { skipped.push(e); continue; }
+    assignments.push({ ...e, id: nextFree() });
+  }
+  return { assignments, taken, skipped };
+}
+
+/** Write `id:` as the first frontmatter key, creating the block when absent. */
+function applySolutionIds(dir, assignments) {
+  for (const a of assignments) {
+    const out = a.hasFrontmatter
+      ? a.text.replace(/^---\n/, `---\nid: ${a.id}\n`)
+      : `---\nid: ${a.id}\n---\n\n${a.text.replace(/^\n+/, '')}`;
+    writeFileSync(join(dir, 'solutions', a.file), out);
+  }
+}
+
 function main(argv) {
   const args = argv.slice(2);
   const i = args.indexOf('--dir');
@@ -710,6 +774,23 @@ function main(argv) {
   if (!existsSync(dir)) {
     process.stderr.write(`migrate-memory: no such directory: ${dir}\n`);
     return 1;
+  }
+
+  // Orthogonal to the flat→tree migration: solutions/ was never flat, it only
+  // lacked handles. Runnable on an already-migrated store, and idempotent.
+  if (args.includes('--solutions')) {
+    const { assignments, skipped } = planSolutionIds(dir);
+    if (!assignments.length) {
+      process.stdout.write(`migrate-memory: all ${skipped.length} solution entr${skipped.length === 1 ? 'y has' : 'ies have'} an id — nothing to assign\n`);
+      return 0;
+    }
+    for (const a of assignments) process.stdout.write(`${dryRun ? '(dry-run) ' : ''}${a.id}  ${a.file}\n`);
+    if (!dryRun) applySolutionIds(dir, assignments);
+    process.stdout.write(
+      `${dryRun ? 'would assign' : 'assigned'} ${assignments.length} id(s); ${skipped.length} already had one. ` +
+      `The slug stays the filename and stays a trigger — record a rename in \`aliases:\` so the hit-rate pass keeps the entry's history.\n`
+    );
+    return 0;
   }
 
   // Only the two generated DIRECTORIES are ever removed and rebuilt. `scratch/run.md`

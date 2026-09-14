@@ -153,6 +153,8 @@ greppable by field:
 
 ```markdown
 ---
+id: S-042
+aliases: [<former slug>, …]
 type: bug | knowledge
 area: <module/domain>
 date: 2026-07-29
@@ -204,6 +206,23 @@ would type — `docker-cp-writes-through-a-bind-mount`, `jsdom-lacks-range-rects
 A slug made only of abstractions (`a-bound-that-admits-its-own-defeat`) is a good
 title and an unreachable entry; put the epigram in the `#` heading, where it costs
 nothing, and spend the filename on words that match.
+
+**`id:` is the handle; the slug is the name, and they are not the same thing.**
+Rewriting a bad trigger is the fix the hit-rate pass prescribes most often, so it
+has to be cheap. While an entry was addressed by its filename it was not: a real
+store had 65 of 66 entries carrying inbound references, 285 in total, and the
+four renames it had already scheduled would have broken 33 of them — the cost of
+the fix was protecting the broken trigger from being fixed. The `id` never
+changes, the filename is free to, and every former name goes in `aliases:` so
+recall still matches the old vocabulary and the hit-rate pass can join a renamed
+entry to its own dismissal history.
+
+Assign handles with `migrate-memory.mjs --solutions` (deterministic by `date`
+then filename, idempotent, never reuses a taken number). Write both halves in a
+`Recall:` line — `S-042 (docker-cp-writes-through-a-bind-mount) applied` — so the
+record stays readable to a person and joinable by a script. One risk comes with
+the handle: two parallel runs can allocate the same number, so `memory-lint`
+blocks on a duplicate.
 
 **`status: stale` is a legitimate terminal state.** When evidence is insufficient
 to rewrite an entry that reality has outgrown, mark it stale with a reason rather
@@ -476,10 +495,12 @@ the store itself, none hand-tuned:
 | At the score threshold, the entry's `[area]` must appear in the prompt | An `ONLY when editing document_instances.py` prefix is prose; keyword matching does not read it. A clearly strong match still stands on its own |
 | An ID the last 10 records dismissed 3+ times loses its slot, not its listing | The hit-rate pass rewrites that trigger once per memory run; between those, the entry keeps arriving |
 
-`solutions/` entries are injected under the ID `S:<slug>` — the slug the records
-already write by hand — so they reach `.recall-log`, the verifier's check 7 and
-the hit-rate pass like every other entry. Before that they logged as `id: null`,
-which meant the deepest tier spent budget and left no trace to maintain it by.
+`solutions/` entries are injected under their `id:` — falling back to `S:<slug>`
+on a store that has not assigned handles yet — so they reach `.recall-log`, the
+verifier's check 7 and the hit-rate pass like every other entry. Before that they
+logged as `id: null`, which meant the deepest tier spent budget and left no trace
+to maintain it by. `aliases:` are scored alongside the slug, so a rename costs an
+entry none of its reachability.
 
 Who recalls what:
 - `/loop-engineering:breakdown` reads `epics/*` **before** proposing a split, and

@@ -33,7 +33,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | script | `loop-record.mjs` | the only writer of `state.json.history` — holds the verdict enum, reconciles the recall inbox, refuses rather than half-writes |
 | script | `loop-archive.mjs` | run/epic archiving, hygiene sweep, retention — deterministic, so the layout cannot drift (`run` · `epic` · `hygiene` · `prune`; all support `--dry-run`, `prune` is dry until `--yes`) |
 | script | `memory-lint.mjs` | store health as code — `reach` (a body no trigger can reach), `budget`, `schema`; blocks the memory gate, runnable by hand during a pass |
-| script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree |
+| script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree; `--solutions` assigns the stable `S-NNN` handles that let a slug be renamed |
 
 ## Install (import into any project)
 

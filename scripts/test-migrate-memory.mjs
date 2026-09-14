@@ -554,6 +554,44 @@ const FULL_DECISIONS = [
   check('--force does not duplicate the migrated scratch line', (runMd.match(/migrated scratch note/g) ?? []).length === 1, runMd);
 }
 
+// ------------------------------------- --solutions: stable handles for slugs
+{
+  const dir = store({ learnings: '# Learnings\n\n## Gotchas\n- [gotcha][x] a fact — why (run-1)\n' });
+  mkdirSync(join(dir, 'solutions'), { recursive: true });
+  const typed = (date) => `---\ntype: bug\narea: x\ndate: ${date}\n---\n\n# Title\n`;
+  writeFileSync(join(dir, 'solutions', 'zebra-later.md'), typed('2026-09-02'));
+  writeFileSync(join(dir, 'solutions', 'alpha-earlier.md'), typed('2026-09-01'));
+  writeFileSync(join(dir, 'solutions', 'beta-earlier.md'), typed('2026-09-01'));
+  writeFileSync(join(dir, 'solutions', 'no-frontmatter.md'), '# Just a heading\n\nbody\n');
+
+  let r = migrate('--dir', dir, '--solutions', '--dry-run');
+  check('--solutions --dry-run writes nothing',
+    r.code === 0 && !readFileSync(join(dir, 'solutions', 'alpha-earlier.md'), 'utf8').includes('id:'), r.err);
+
+  r = migrate('--dir', dir, '--solutions');
+  const idOf = (f) => (/^id:\s*(S-\d+)/m.exec(readFileSync(join(dir, 'solutions', f), 'utf8')) ?? [])[1];
+  // deterministic: date first, then filename — so two people get the same answer
+  check('--solutions numbers by date then filename',
+    r.code === 0 && idOf('alpha-earlier.md') === 'S-001' && idOf('beta-earlier.md') === 'S-002'
+      && idOf('zebra-later.md') === 'S-003', `${r.err} ${idOf('alpha-earlier.md')}/${idOf('beta-earlier.md')}/${idOf('zebra-later.md')}`);
+  check('--solutions creates frontmatter when the entry had none',
+    idOf('no-frontmatter.md') === 'S-004'
+      && readFileSync(join(dir, 'solutions', 'no-frontmatter.md'), 'utf8').includes('# Just a heading'), idOf('no-frontmatter.md'));
+
+  const before = readFileSync(join(dir, 'solutions', 'alpha-earlier.md'), 'utf8');
+  r = migrate('--dir', dir, '--solutions');
+  check('--solutions is idempotent',
+    r.code === 0 && r.out.includes('nothing to assign')
+      && readFileSync(join(dir, 'solutions', 'alpha-earlier.md'), 'utf8') === before, r.out);
+
+  // A handle already in use is never reassigned to a different entry.
+  writeFileSync(join(dir, 'solutions', 'new-entry.md'), typed('2026-08-01'));
+  r = migrate('--dir', dir, '--solutions');
+  check('--solutions never reuses a taken handle',
+    r.code === 0 && idOf('new-entry.md') === 'S-005' && idOf('alpha-earlier.md') === 'S-001',
+    `${idOf('new-entry.md')} / ${idOf('alpha-earlier.md')}`);
+}
+
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });
 console.log(failed === 0 ? '\nall migrate-memory checks passed' : `\n${failed} migrate-memory check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

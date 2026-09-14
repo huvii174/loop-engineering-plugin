@@ -270,13 +270,21 @@ function collectSolutions(memDir, kws, out) {
   for (const f of files) {
     const head = (readIfExists(join(memDir, 'solutions', f)) || '')
       .split('\n').slice(0, SOLUTION_HEAD_LINES).join('\n');
-    const s = score(f + '\n' + head, kws);
+    // Aliases are scored too: a renamed entry must stay findable by the words
+    // people still use for it, which is the half a rename otherwise throws away.
+    const aliases = (/^aliases:\s*\[(.*)\]\s*$/m.exec(head) || [])[1] ?? '';
+    const s = score(f + '\n' + head + '\n' + aliases, kws);
     if (s > 0) {
       const title = (head.match(/^#\s+(.+)$/m) || [])[1] || f.replace(/\.md$/, '');
       const slug = f.replace(/\.md$/, '');
+      // The numeric handle when the entry has one; the slug is the fallback for
+      // a store that has not run `migrate-memory.mjs --solutions` yet. Both are
+      // logged with the slug beside them, so a `Recall:` line stays readable.
+      const id = (/^id:\s*(S-\d+)\s*$/m.exec(head) || [])[1] ?? `S:${slug}`;
       out.push({
-        s, id: `S:${slug}`, solution: f, area: (/^area:\s*(.+)$/m.exec(head) || [])[1]?.toLowerCase() ?? null,
-        text: `solutions/${f} — "${title.slice(0, 120)}"`,
+        s, id, slug, solution: f,
+        area: (/^area:\s*(.+)$/m.exec(head) || [])[1]?.toLowerCase() ?? null,
+        text: `${id} solutions/${f} — "${title.slice(0, 120)}"`,
       });
     }
   }
@@ -354,8 +362,12 @@ function render(memDir, cwd, top, kws, dismissed) {
     const eligible = inlined < MAX_INLINE
       && c.s >= INLINE_MIN_SCORE
       && strong
+      // Dismissals are matched on every name the entry answers to: records
+      // written before an id existed name the slug, and records written before
+      // a rename name the old slug.
       && !dismissed.has(c.id)
-      && !dismissed.has(String(c.id).replace(/^S:/, ''));
+      && !dismissed.has(String(c.id).replace(/^S:/, ''))
+      && !(c.slug && dismissed.has(c.slug));
     const body = eligible ? findBody(memDir, c.id) : null;
     if (body) {
       inlined++;

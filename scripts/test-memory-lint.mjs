@@ -126,6 +126,27 @@ const CASES = [
     expect: { check: 'schema', level: 'block', message: 'typed frontmatter' },
   },
   {
+    // Identity decoupled from name: renaming the slug must not break the handle.
+    name: 'an entry carrying an id raises no id finding',
+    files: { 'solutions/a-real-entry.md': FRONTMATTER.replace('---\n', '---\nid: S-001\n') },
+    absent: ['schema'],
+  },
+  {
+    name: 'entries without an id warn — a rename would break their references',
+    files: { 'solutions/a-real-entry.md': FRONTMATTER },
+    expect: { check: 'schema', level: 'warn', message: 'no `id:`' },
+  },
+  {
+    // The failure mode numeric handles introduce: two parallel runs each read
+    // the same max and each allocate the next.
+    name: 'two entries under one handle block',
+    files: {
+      'solutions/first.md': FRONTMATTER.replace('---\n', '---\nid: S-007\n'),
+      'solutions/second.md': FRONTMATTER.replace('---\n', '---\nid: S-007\n'),
+    },
+    expect: { check: 'schema', level: 'block', message: 'more than one entry' },
+  },
+  {
     name: 'a done rollup with no promotion block warns — epic close is the gate event',
     files: { 'epics/e.md': '---\nepic: E\nstatus: done\n---\n\n| # | Sub-goal |\n|---|---|\n| 1 | x (D-e-001) |\n' },
     expect: { check: 'cite', level: 'warn', message: 'Promotion candidates' },

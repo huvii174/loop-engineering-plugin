@@ -201,6 +201,8 @@ function checkSchema(memDir, findings) {
   const missing = [];
   const badCause = [];
   const advisory = [];
+  const unidentified = [];
+  const byId = new Map();
   for (const f of mdFiles(dir)) {
     const text = read(f);
     if (!text) continue;
@@ -217,6 +219,38 @@ function checkSchema(memDir, findings) {
     // thing it warns about. Only a line the verifier already checks changes an
     // outcome, and `Must not:` is that line.
     if (/^type:\s*bug\s*$/m.test(head) && !/^must_not:\s*\S/m.test(head)) advisory.push(name);
+
+    // The handle that lets a slug be renamed without breaking its references.
+    const id = (/^id:\s*(S-\d+)\s*$/m.exec(head) || [])[1];
+    if (!id) unidentified.push(name);
+    else {
+      if (!byId.has(id)) byId.set(id, []);
+      byId.get(id).push(name);
+    }
+  }
+
+  // Two entries under one handle is the failure mode numeric ids introduce:
+  // parallel runs each read the same max and each allocate the next. Cheap to
+  // detect, and detection is what turns a silent overwrite into a finding.
+  const collisions = [...byId].filter(([, files]) => files.length > 1);
+  if (collisions.length) {
+    findings.push({
+      check: 'schema', level: 'block', root: 'solutions', count: collisions.length,
+      message:
+        `${collisions.length} solution id(s) are used by more than one entry — two runs allocated the same ` +
+        `handle. Renumber the later one; every reference to a duplicated id is ambiguous until you do.`,
+      ids: collisions.map(([id, files]) => `${id}: ${files.join(' + ')}`).slice(0, 6),
+    });
+  }
+  if (unidentified.length) {
+    findings.push({
+      check: 'schema', level: 'warn', root: 'solutions', count: unidentified.length,
+      message:
+        `${unidentified.length} solution entr${unidentified.length === 1 ? 'y has' : 'ies have'} no \`id:\` — they are ` +
+        `addressed by filename, so renaming the slug breaks every inbound reference. ` +
+        `Run \`migrate-memory.mjs --solutions\` to assign handles.`,
+      ids: unidentified.slice(0, 6),
+    });
   }
   if (missing.length) {
     findings.push({
