@@ -286,9 +286,19 @@ Delete**:
   its trigger into a neighbouring entry's and keep the body. The store keeps the
   knowledge; the index gets shorter. **Prefer Demote to Delete** for anything
   grounded — a body costs nothing until its trigger fires.
+  **The fold is the whole outcome.** A body whose trigger simply stopped
+  existing is not demoted, it is dropped: nothing scores body anchors, so it is
+  unreachable by auto-recall and by a tag grep alike. `memory-lint` blocks on
+  this (`reach`), because the check that is easy to run — the `### L-NNN` anchor
+  is still there — passes either way. A real pass verified exactly that, reported
+  "zero IDs lost", and left 126 of 509 bodies reachable by nothing.
 - **Delete** — reserved for entries that are *wrong* or whose problem domain is
   gone. Check the domain is actually gone (code removed ≠ problem gone). No
-  archive section: git history is the archive.
+  archive section: git history is the archive — **which holds only while
+  `.loop/memory/` is tracked.** Git cannot un-ignore a child of an ignored
+  directory, so a project that ignores `.loop/` ignores the store with it; the
+  pattern that works is `.loop/*` + `!.loop/memory/` + `.loop/memory/scratch/`.
+  `loop-reminder` says so at session start when it finds the store ignored.
 
 **The consolidation trigger.** When one `[type][area]` cluster passes ~5 index
 lines, consolidating it is due: state the principle they share as one entry, and

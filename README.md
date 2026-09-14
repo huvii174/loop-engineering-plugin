@@ -32,6 +32,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | script | `loop-breaker.mjs` | the circuit breaker, as code rather than as a prompt |
 | script | `loop-record.mjs` | the only writer of `state.json.history` — holds the verdict enum, reconciles the recall inbox, refuses rather than half-writes |
 | script | `loop-archive.mjs` | run/epic archiving, hygiene sweep, retention — deterministic, so the layout cannot drift (`run` · `epic` · `hygiene` · `prune`; all support `--dry-run`, `prune` is dry until `--yes`) |
+| script | `memory-lint.mjs` | store health as code — `reach` (a body no trigger can reach), `budget`, `schema`; blocks the memory gate, runnable by hand during a pass |
 | script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree |
 
 ## Install (import into any project)
@@ -107,7 +108,7 @@ resumes. The field holds **thresholds, never counters** — counters are recompu
 from `history` on every run — so a non-positive value is refused in favour of the
 default with a warning naming the field. (The former spelling `breaker` is still
 read; setting both warns and prefers the new one.) Verify with
-`node scripts/test-loop-breaker.mjs` (42 checks).
+`node scripts/test-loop-breaker.mjs` (54 checks).
 
 Two rules keep those counters honest, both derived from recorded state rather
 than from anything the loop says about itself. **Bookkeeping passes are

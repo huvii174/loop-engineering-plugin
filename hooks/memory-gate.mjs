@@ -8,14 +8,16 @@
  *   - memory untouched since that state was written (the compounding step never ran)
  *   - undistilled scratch entries
  *   - the recall log has entries the iteration record never accounted for
- *   - the index is over its reading budget (maintenance is due)
+ *   - `scripts/memory-lint.mjs` reports a blocking finding (reach, budget, schema)
  * Deterministic checks only (mtime + string match); fail-open; stop_hook_active
  * prevents infinite re-blocking; LOOP_HOOKS_OFF=1 bypass.
  *
- * The budget check is on the INDEX, never the store: bodies are read only when
- * their trigger fires, so a store may grow without bound while what every run
- * reads must not. Counting entries would gate the wrong thing — a long-lived
- * project is supposed to accumulate entries.
+ * The budget half of the lint is on the INDEX, never the store: bodies are read
+ * only when their trigger fires, so a store may grow without bound while what
+ * every run reads must not. Counting entries would gate the wrong thing — a
+ * long-lived project is supposed to accumulate entries. The reach half is why
+ * the lint exists at all: a body with no trigger and no cluster map costs
+ * nothing to read and can never be found, which is worse than over budget.
  *
  * Ad-hoc branch (no loop involved): when the project has adopted loop memory
  * (.loop/memory/ exists), the session edited files while working through
@@ -34,13 +36,12 @@
 import { join } from 'node:path';
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { readStdinJson, hooksOff, loadState, readIfExists, newestMtime, mdSection, readTail } from './lib.mjs';
+import { lint } from '../scripts/memory-lint.mjs';
 
 const TERMINAL = new Set(['done', 'stuck', 'stopped-max-iterations', 'stopped-user']);
 const MTIME_TOLERANCE_MS = 2000;
 const TRANSCRIPT_TAIL_BYTES = 2 * 1024 * 1024;
 const MIN_ERROR_HITS = 2;
-const INDEX_BUDGET_BYTES = 40 * 1024;   // per _index.md — the read-every-run half
-const INDEX_LINE_CHARS = 200;           // per trigger line
 
 /** True when this session did real ad-hoc work but captured nothing. */
 function adhocNudgeDue(cwd, input) {
@@ -92,29 +93,22 @@ function scratchReason(memDir) {
   return `${live.length} scratch entr${live.length === 1 ? 'y is' : 'ies are'} not distilled (scratch must be empty at run end)`;
 }
 
-/** Index files over their reading budget, or carrying over-long trigger lines. */
-function budgetReasons(memDir) {
-  const out = [];
-  for (const root of ['learnings', 'decisions']) {
-    const p = join(memDir, root, '_index.md');
-    const text = readIfExists(p);
-    if (text === null) continue;
-    const bytes = Buffer.byteLength(text, 'utf8');
-    if (bytes > INDEX_BUDGET_BYTES) {
-      out.push(
-        `${root}/_index.md is ${Math.round(bytes / 1024)}KB, over the ${INDEX_BUDGET_BYTES / 1024}KB reading budget — ` +
-        `consolidate a cluster (bodies keep their detail; the index gets shorter)`
-      );
-    }
-    const long = text.split('\n').filter((l) => /^\s*-\s+\S/.test(l) && l.trim().length > INDEX_LINE_CHARS);
-    if (long.length) {
-      out.push(
-        `${long.length} trigger line(s) in ${root}/_index.md exceed ${INDEX_LINE_CHARS} chars — ` +
-        `move the detail into the body under its \`###\` anchor and leave the symptom on the line`
-      );
-    }
+/**
+ * Blocking findings from the store lint — budget, reachability, schema.
+ *
+ * Delegated rather than restated: `scripts/memory-lint.mjs` is the one place
+ * these rules live, and it is runnable by hand during a maintenance pass. The
+ * gate only decides that a blocking finding stops a terminal stop.
+ *
+ * Warn-level findings are deliberately not carried here. A stop gate that
+ * reports everything trains the reader to skim it.
+ */
+function lintReasons(memDir) {
+  try {
+    return lint(memDir).filter((f) => f.level === 'block').map((f) => f.message);
+  } catch {
+    return []; // fail-open, like every other check in this hook
   }
-  return out;
 }
 
 /** Newest iteration record, or null. */
@@ -167,7 +161,7 @@ async function main() {
     if (scratch) reasons.push(scratch);
     const recall = recallReason(cwd);
     if (recall) reasons.push(recall);
-    reasons.push(...budgetReasons(memDir));
+    reasons.push(...lintReasons(memDir));
   }
 
   // Ad-hoc branch: the loop owes nothing (no state, or long-closed and clean) —

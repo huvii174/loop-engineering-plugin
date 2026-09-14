@@ -7,5 +7,13 @@
 *.iml
 node_modules/
 
-# loop run state (dogfooding this plugin on itself)
-.loop/
+# loop run state (dogfooding this plugin on itself). Everything under .loop/ is
+# run exhaust EXCEPT memory/, which the maintenance contract is allowed to Delete
+# from — and "git history is the archive" is only true of a tracked file.
+# Git cannot un-ignore a child of an ignored directory, so the parent is matched
+# with `.loop/*` rather than `.loop/`.
+.loop/*
+!.loop/memory/
+.loop/memory/scratch/
+.loop/memory/*.pre-migration
+.loop/memory/*.post-migration-*

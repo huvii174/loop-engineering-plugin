@@ -15,9 +15,33 @@
 
 import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { readStdinJson, hooksOff, loadState, readIfExists } from './lib.mjs';
 
 const MAX_SLUGS = 8;
+
+/**
+ * Is the memory store outside git?
+ *
+ * The maintenance contract permits **Delete**, and justifies it with "git
+ * history is the archive". That sentence is only true of a tracked file. A real
+ * store of 509 learnings, 547 decisions and 66 solution entries sat entirely
+ * untracked — `git ls-files` returned 0 — so every Delete was unrecoverable and
+ * nothing said so. One line at session start is the cheapest place to say it.
+ *
+ * `git check-ignore` exits 1 when the path is NOT ignored, which is the healthy
+ * case; any other failure (no git, no repo) means there is nothing to warn about.
+ */
+function memoryUntracked(cwd) {
+  const probe = join('.loop', 'memory', 'learnings', '_index.md');
+  if (!existsSync(join(cwd, probe))) return false;
+  try {
+    execFileSync('git', ['check-ignore', '-q', probe], { cwd, stdio: 'ignore' });
+    return true; // exit 0 — the store is ignored
+  } catch {
+    return false;
+  }
+}
 
 function mdSlugs(dir) {
   try { return readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, '')); }
@@ -73,6 +97,13 @@ async function main() {
     }
   }
   out += memoryDigest(cwd);
+  if (memoryUntracked(cwd)) {
+    out +=
+      `[loop-engineering] .loop/memory/ is git-ignored, so a maintenance Delete cannot be recovered. ` +
+      `Track it before the next /loop-engineering:memory pass — replace \`.loop/\` in .gitignore with ` +
+      `\`.loop/*\` + \`!.loop/memory/\` + \`.loop/memory/scratch/\` (git cannot un-ignore a child of an ` +
+      `ignored directory).\n`;
+  }
 
   if (out) process.stdout.write(out);
   return 0;

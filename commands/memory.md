@@ -123,12 +123,24 @@ the failure that silently wastes a whole store.
 
 ## Step 7 — Prune the index, not the store
 
-When a `_index.md` passes ~40KB, or one `[type][area]` cluster passes ~5 trigger
-lines, run maintenance before adding more. The lever is **Consolidate** and
-**Demote**: state the principle a cluster shares as one entry, keep the cases as
-bodies it names. The budget is a signal to run maintenance, **not a quota to
-hit** — never demote an entry because it was last in the file, and never keep a
-wrong one because the index was comfortably short.
+Run the lint first, and again when the pass is done:
+
+```bash
+node "$CLAUDE_PLUGIN_ROOT"/scripts/memory-lint.mjs --dir .loop/memory
+```
+
+Exit `2` means a blocking finding — `reach` (a body no trigger and no cluster
+map can reach), `budget` (index over 40KB, or a trigger line over 200 chars),
+`schema` (untyped `solutions/` frontmatter). The pass is finished when the
+second run reports `reach` at zero; the `warn` rows are judgement calls to read,
+not a queue to empty.
+
+The lever is **Consolidate** and **Demote**: state the principle a cluster shares
+as one entry, keep the cases as bodies it names. The budget is a signal to run
+maintenance, **not a quota to hit** — never demote an entry because it was last
+in the file, and never keep a wrong one because the index was comfortably short.
+When the lint says the commentary share alone is the overage, moving those notes
+to `<root>/_maintenance.md` is the pass: it costs no entry at all.
 
 Bodies are not pruned by size. An entry that outgrew a paragraph is a
 `solutions/` candidate by the escalation rule, not a line to trim.
