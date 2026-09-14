@@ -70,6 +70,28 @@ const CASES = [
     absent: ['reach'],
   },
   {
+    // Regression: the map body was matched with a `\Z` lookahead, which JS does
+    // not have, so a map that is the LAST heading in its file matched nothing
+    // and its members read as unreachable. The check reported a defect in the
+    // data when the defect was in the check — which is the failure this whole
+    // lint exists to catch, landing on the lint.
+    name: 'a cluster map that is the last heading in its file still reaches its members',
+    files: {
+      'learnings/_index.md': '# Learnings index\n- C-01 [gotcha][api] the principle these share\n',
+      'learnings/gotchas.md': [
+        '### L-001 [gotcha][api] the symptom',
+        '',
+        'body one',
+        '',
+        '### C-01 [gotcha][api] the principle these share',
+        '',
+        '- **L-001** — its symptom',
+        '',
+      ].join('\n'),
+    },
+    absent: ['reach'],
+  },
+  {
     name: 'a folded group line reaches the range it names',
     files: {
       'decisions/_index.md': '# Decisions index\n- D-759-001…102 (102 decisions) — epic done; bodies in decisions/759/\n',

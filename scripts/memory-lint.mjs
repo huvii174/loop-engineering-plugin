@@ -105,13 +105,17 @@ function anchors(text) {
   return out;
 }
 
-/** The text of each `### C-NN` cluster map body, joined — a map's members. */
+/**
+ * The text of each `### C-NN` cluster map body, joined — a map's members.
+ *
+ * Split rather than matched with a terminating lookahead: JavaScript has no
+ * `\Z`, so `(?=^###|\Z)` silently means "or a literal Z" and a map that is the
+ * LAST heading in its file matches nothing. That read as five unreachable
+ * entries whose map had just been written — the check reporting a defect in the
+ * data when the defect was in the check.
+ */
 function mapBodies(text) {
-  let out = '';
-  const re = /^###\s+C-\d+[\s\S]*?(?=^###\s+|\Z)/gm;
-  let m;
-  while ((m = re.exec(text))) out += m[0] + '\n';
-  return out;
+  return text.split(/^### /m).filter((c) => /^C-\d+/.test(c)).map((c) => '### ' + c).join('\n');
 }
 
 // --------------------------------------------------------------------- checks
@@ -129,7 +133,12 @@ function checkReach(memDir, findings) {
     const index = read(join(dir, '_index.md'));
     if (index === null) continue;
 
-    const indexed = new Set([...index.matchAll(/^-\s*([A-Z]-[A-Za-z0-9-]*\d)\b/gm)].map((m) => m[1]));
+    // Every ID an index line NAMES, not only the one it leads with. Folding a
+    // trigger into a neighbouring entry's line is what Demote means, so
+    // `- L-051 … L-054 clamps … L-055 must walk …` reaches all three. Reading
+    // only the leading ID called that a dropped entry and asked for a fold that
+    // had already happened.
+    const indexed = new Set([...index.matchAll(/(?<![\w-])([A-Z]-[A-Za-z0-9-]*\d)\b/g)].map((m) => m[1]));
     // A folded group line names a range ("D-759-001…102"); its prefix reaches them.
     const foldedPrefixes = [...index.matchAll(/^-\s*([A-Z]-[A-Za-z0-9-]+?)-?\d+\s*…/gm)].map((m) => m[1]);
 
@@ -299,9 +308,9 @@ function checkDuplicates(memDir, findings) {
     for (const f of walkMd(join(memDir, root))) {
       const text = read(f);
       if (!text) continue;
-      const re = /^###\s+(L-\d+)\s*(\[[^\]]+\]\[[^\]]+\])?([\s\S]*?)(?=^###\s+|\Z)/gm;
-      let m;
-      while ((m = re.exec(text))) {
+      for (const chunk of text.split(/^### /m)) {
+        const m = /^(L-\d+)\s*(\[[^\]]+\]\[[^\]]+\])?([\s\S]*)$/.exec(chunk);
+        if (!m) continue;
         const [, id, tag, body] = m;
         for (const ref of body.match(/[\w./-]+\.\w+:\d+/g) ?? []) {
           if (!byAnchor.has(ref)) byAnchor.set(ref, []);

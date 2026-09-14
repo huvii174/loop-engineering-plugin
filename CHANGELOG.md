@@ -114,6 +114,18 @@ in prose and asked a script to count it; only one of those two contracts held.
   are injected as `S:<slug>` and now reach `.recall-log`, check 7 and the
   hit-rate pass; they logged as `id: null` before, so the deepest tier spent
   budget and left nothing to maintain it by.
+- **Two bugs in the lint itself, both found by running it on a real store.**
+  `mapBodies` terminated its match with `(?=^###|\Z)` — JavaScript has no `\Z`,
+  so it means "or a literal Z", and a cluster map that is the LAST heading in its
+  file matched nothing: five entries whose map had just been written read as
+  unreachable. And `reach` read only the ID an index line *leads with*, so an
+  entry folded into a neighbour's trigger — `- L-051 … L-054 clamps … L-055 must
+  walk …`, which is exactly what Demote produces — was reported as dropped and
+  asked for a fold that had already happened. Both made the check report a defect
+  in the data when the defect was in the check, which is the failure this lint
+  exists to catch, landing on the lint. The corrected count on the real store is
+  **118 unreachable, not 126**. A regression test covers the end-of-file map and
+  was confirmed to go red against the old regex.
 - **The lint carries a baseline, because a long-lived store fails a new rule by
   the hundred.** Pointed at the real store, these checks report 154 findings that
   all predate them — and a gate that blocks every stop until they are fixed is a
