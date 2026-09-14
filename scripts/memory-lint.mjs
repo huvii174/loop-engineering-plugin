@@ -5,8 +5,8 @@
  *   node memory-lint.mjs [--dir .loop/memory] [--json]
  *
  * Exit codes:
- *   0  clean, or warnings only
- *   2  a blocking finding — maintenance is due before the store grows further
+ *   0  clean, or warnings and recorded debt only
+ *   2  a blocking finding — debt above the recorded baseline, or a check with no baseline
  *   1  the store is missing or unreadable
  *
  * Why this exists, in one measured example. A real maintenance pass folded 152
@@ -24,7 +24,7 @@
  * the thing the pass already did.
  */
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
 
 const INDEX_BUDGET_BYTES = 40 * 1024;  // matches hooks/memory-gate.mjs
@@ -361,13 +361,57 @@ function checkCitations(memDir, findings) {
 
 // ------------------------------------------------------------------------ main
 
-export function lint(memDir) {
+const BASELINE_FILE = '.lint-baseline.json';
+
+/**
+ * Debt a store already carried when these checks arrived.
+ *
+ * A store predating a rule fails it by the hundred — the real one opened at 126
+ * unreachable bodies and 22 untyped `root_cause` values — and a gate that blocks
+ * every stop until all of it is fixed is a gate nobody can work behind. It also
+ * defeats itself: a stop report of 154 findings trains the reader to skim the
+ * one that is new.
+ *
+ * So the baseline is a **ratchet**, the same shape as the breaker's
+ * `record_contract_since`: the debt on record is reported and does not block,
+ * anything above it does. Maintenance lowers the number and can never raise it —
+ * `--accept-baseline` refuses a count worse than the one already recorded, which
+ * is what keeps this a grace period rather than a mute button.
+ */
+export function readBaseline(memDir) {
+  try { return JSON.parse(readFileSync(join(memDir, BASELINE_FILE), 'utf8')).counts ?? {}; }
+  catch { return {}; }
+}
+
+/** Total findings per check, counting a finding with no `count` as one. */
+export function tally(findings) {
+  const out = {};
+  for (const f of findings) out[f.check] = (out[f.check] ?? 0) + (f.count ?? 1);
+  return out;
+}
+
+export function lint(memDir, { baseline = readBaseline(memDir) } = {}) {
   const findings = [];
   checkReach(memDir, findings);
   checkBudget(memDir, findings);
   checkSchema(memDir, findings);
   checkDuplicates(memDir, findings);
   checkCitations(memDir, findings);
+
+  // Demote a blocking check to `debt` while it sits at or under its baseline.
+  // Counted per check rather than per finding: which entry is unreachable
+  // changes as maintenance runs, and how many is the number that must not grow.
+  // Tally only the blocking half: that is what the baseline records, and
+  // comparing a total that includes warnings against it would never match.
+  const counts = tally(findings.filter((f) => f.level === 'block'));
+  for (const f of findings) {
+    if (f.level !== 'block') continue;
+    const allowed = baseline[f.check];
+    if (allowed !== undefined && counts[f.check] <= allowed) {
+      f.level = 'debt';
+      f.baseline = allowed;
+    }
+  }
   return findings;
 }
 
@@ -381,14 +425,39 @@ function main(argv) {
     return 1;
   }
 
-  const findings = lint(memDir);
+  const baseline = readBaseline(memDir);
+  const findings = lint(memDir, { baseline });
+
+  if (args.includes('--accept-baseline')) {
+    const counts = tally(findings.filter((f) => f.level === 'block' || f.level === 'debt'));
+    const worse = Object.entries(counts).filter(([k, n]) => baseline[k] !== undefined && n > baseline[k]);
+    if (worse.length) {
+      // Accepting a worse number is how a ratchet becomes a mute button.
+      process.stderr.write(
+        `memory-lint: refusing to raise the baseline — ` +
+        worse.map(([k, n]) => `${k} ${baseline[k]} → ${n}`).join(', ') +
+        `. Fix what grew, or record why the debt legitimately increased and edit ${BASELINE_FILE} by hand.\n`
+      );
+      return 1;
+    }
+    writeFileSync(join(memDir, BASELINE_FILE), JSON.stringify({
+      recorded: new Date().toISOString().slice(0, 10),
+      note: 'Debt these checks found on adoption. It may only go down; memory-lint refuses to raise it.',
+      counts,
+    }, null, 2) + '\n');
+    process.stdout.write(`memory-lint: baseline recorded — ${Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(', ') || 'clean'}\n`);
+    return 0;
+  }
+
   if (args.includes('--json')) {
     process.stdout.write(JSON.stringify({ dir: memDir, findings }, null, 2) + '\n');
   } else if (!findings.length) {
     process.stdout.write('memory-lint: clean\n');
   } else {
     for (const f of findings) {
-      process.stdout.write(`${f.level === 'block' ? 'BLOCK' : 'warn '}  [${f.check}] ${f.message}\n`);
+      const tag = f.level === 'block' ? 'BLOCK' : f.level === 'debt' ? 'debt ' : 'warn ';
+      const at = f.level === 'debt' ? ` — recorded debt, at or under the baseline of ${f.baseline}` : '';
+      process.stdout.write(`${tag}  [${f.check}] ${f.message}${at}\n`);
       if (f.ids?.length) process.stdout.write(`         ${f.ids.join(', ')}${f.count > f.ids.length ? ', …' : ''}\n`);
     }
   }

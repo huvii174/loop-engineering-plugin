@@ -163,6 +163,37 @@ const CASES = [
     absent: ['cite'],
   },
   {
+    // A store predating a rule fails it by the hundred; a gate that blocks every
+    // stop until all of it is fixed is a gate nobody can work behind.
+    name: 'debt at or under the baseline is reported, not blocking',
+    files: {
+      'learnings/_index.md': '# Learnings index\n',
+      'learnings/gotchas.md': '### L-001 [gotcha][api] one\n\nbody\n\n### L-002 [gotcha][api] two\n\nbody\n',
+    },
+    baseline: { reach: 2 },
+    absent: ['reach'],
+    expect: { check: 'reach', level: 'debt' },
+  },
+  {
+    name: 'debt above the baseline blocks again — the ratchet only turns one way',
+    files: {
+      'learnings/_index.md': '# Learnings index\n',
+      'learnings/gotchas.md': '### L-001 [gotcha][api] one\n\nbody\n\n### L-002 [gotcha][api] two\n\nbody\n',
+    },
+    baseline: { reach: 1 },
+    expect: { check: 'reach', level: 'block' },
+  },
+  {
+    name: 'a baseline on one check does not silence another',
+    files: {
+      'learnings/_index.md': '# Learnings index\n',
+      'learnings/gotchas.md': '### L-001 [gotcha][api] one\n\nbody\n',
+      'solutions/e.md': FRONTMATTER.replace('root_cause: test-isolation', 'root_cause: a whole sentence'),
+    },
+    baseline: { reach: 1 },
+    expect: { check: 'schema', level: 'block' },
+  },
+  {
     name: 'an empty store is clean',
     files: { 'learnings/_index.md': '# Learnings index\n' },
     absent: ['reach', 'budget', 'schema', 'cite'],
@@ -175,7 +206,7 @@ for (const c of CASES) {
   let ok = true;
   let detail = '';
   try {
-    const found = lint(dir);
+    const found = lint(dir, c.baseline ? { baseline: c.baseline } : {});
     if (c.expect) {
       const hit = found.find((f) =>
         f.check === c.expect.check

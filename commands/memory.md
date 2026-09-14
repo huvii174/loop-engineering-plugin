@@ -141,9 +141,17 @@ node "$CLAUDE_PLUGIN_ROOT"/scripts/memory-lint.mjs --dir .loop/memory
 
 Exit `2` means a blocking finding — `reach` (a body no trigger and no cluster
 map can reach), `budget` (index over 40KB, or a trigger line over 200 chars),
-`schema` (untyped `solutions/` frontmatter). The pass is finished when the
-second run reports `reach` at zero; the `warn` rows are judgement calls to read,
-not a queue to empty.
+`schema` (untyped `solutions/` frontmatter). The `warn` rows are judgement calls
+to read, not a queue to empty.
+
+**On a store that predates these checks, record the debt once** with
+`--accept-baseline`. A long-lived store opens at hundreds of findings, and a gate
+that blocks every stop until all of them are fixed is a gate nobody can work
+behind. Recorded debt prints as `debt` and does not block; anything **above** the
+baseline does. The number may only go down — `--accept-baseline` refuses a count
+worse than the one on record, which is what keeps it a grace period rather than a
+mute button. Lowering it is the pass's real output: finish by re-running with
+`--accept-baseline` so the store's debt ratchets to its new level.
 
 The lever is **Consolidate** and **Demote**: state the principle a cluster shares
 as one entry, keep the cases as bodies it names. The budget is a signal to run

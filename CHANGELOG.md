@@ -114,6 +114,14 @@ in prose and asked a script to count it; only one of those two contracts held.
   are injected as `S:<slug>` and now reach `.recall-log`, check 7 and the
   hit-rate pass; they logged as `id: null` before, so the deepest tier spent
   budget and left nothing to maintain it by.
+- **The lint carries a baseline, because a long-lived store fails a new rule by
+  the hundred.** Pointed at the real store, these checks report 154 findings that
+  all predate them — and a gate that blocks every stop until they are fixed is a
+  gate nobody can work behind, which also buries the one finding that is new.
+  `--accept-baseline` records the debt per check: it prints as `debt` and does
+  not block, while anything **above** it does. The number may only fall —
+  accepting a worse count is refused, which is the difference between a grace
+  period and a mute button. Same shape as the breaker's `record_contract_since`.
 - **`scripts/memory-lint.mjs` checks reachability, not anchors.** `reach`: every
   body has an index line or is named in a cluster map. A real maintenance pass
   folded 152 index lines, verified all 358 `### L-NNN` anchors survived, and
