@@ -18,3 +18,9 @@ node_modules/
 # evidence copied in for analysis, and local scratch — never shipped
 loop-evd/
 evd/
+
+# local statusline experiments — not part of the plugin. Ignored rather than
+# merely untracked: they were swept back in twice by a broad `git add -A scripts/`,
+# and remembering not to do that is not a fix.
+scripts/statusline-probe.mjs
+scripts/statusline-simple.mjs
