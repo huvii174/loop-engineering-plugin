@@ -138,6 +138,21 @@ const CASES = [
     absent: ['schema'],
   },
   {
+    name: 'an entry with no severity is fine — the field stopped being required',
+    files: { 'solutions/a.md': FRONTMATTER.replace('severity: high\n', '') },
+    absent: ['schema'],
+  },
+  {
+    name: 'a caught_at outside the closed set blocks',
+    files: { 'solutions/a.md': FRONTMATTER.replace('---\n', '---\ncaught_at: somebody noticed\n') },
+    expect: { check: 'schema', level: 'block', message: 'caught_at' },
+  },
+  {
+    name: 'a caught_at inside the closed set is fine',
+    files: { 'solutions/a.md': FRONTMATTER.replace('---\n', '---\ncaught_at: merged\n') },
+    absent: ['schema'],
+  },
+  {
     name: 'a free-text root_cause blocks — it cannot be grepped',
     files: { 'solutions/a-real-entry.md': FRONTMATTER.replace('root_cause: test-isolation', 'root_cause: the harness measured nothing') },
     expect: { check: 'schema', level: 'block', message: 'closed set' },
@@ -202,6 +217,22 @@ const CASES = [
       ].join('\n'),
     },
     absent: ['cite'],
+  },
+  {
+    name: 'an index line into archive/ that marks itself historical is fine',
+    files: {
+      'decisions/_index.md': '# Decisions index\n- D-841-001…069 — epic done; bodies ARCHIVED to `archive/epics/841/decisions/`\n',
+      'decisions/841/item-1.md': '### D-841-001 · active\n\nbody\n',
+    },
+    absent: ['cite'],
+  },
+  {
+    name: 'an index line into archive/ with no such marker warns',
+    files: {
+      'decisions/_index.md': '# Decisions index\n- D-841-001…069 — see `archive/epics/841/decisions/`\n',
+      'decisions/841/item-1.md': '### D-841-001 · active\n\nbody\n',
+    },
+    expect: { check: 'cite', level: 'warn', message: 'frozen snapshot' },
   },
   {
     // A store predating a rule fails it by the hundred; a gate that blocks every

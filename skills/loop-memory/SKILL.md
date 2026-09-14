@@ -159,7 +159,8 @@ type: bug | knowledge
 area: <module/domain>
 date: 2026-07-29
 run: run-2026-07-29
-severity: low | medium | high
+severity: low | medium | high        # optional
+caught_at: merged | review | in-run   # how far it got before something caught it
 root_cause: wrong-api | missing-config | async-timing | scope | test-isolation
           | data-shape | dependency | logic | unmeasured-claim | harness
           | incomplete-model | unknown
@@ -184,6 +185,17 @@ red_probe: <optional — the one-line mutation or command that makes it red>
 
 For `type: knowledge` (a pattern or decision rather than a defect), replace
 Symptoms/What-didn't-work with **Context** and **Guidance**.
+
+**`caught_at` is the field that discriminates, and `severity` is the one that
+stopped.** A real corpus graded 79% of itself `high` — a filter that returns
+almost everything is not a filter, and the write cost bought nothing. `caught_at`
+records a fact instead of a judgement: `merged` (it reached the branch or
+production before anything caught it), `review` (the gate or the verifier caught
+it), `in-run` (caught while the work was still open). Leave it **absent** rather
+than guess: on the store this was derived from, a keyword pass over "merged" and
+"shipped" was wrong on 5 of 24 entries — three were counterfactual ("would have
+shipped"), two described a ProseMirror node merge. `severity` stays optional for
+entries that already carry a considered one.
 
 The last three causes name failures of *verification* rather than of code:
 `unmeasured-claim` (nothing that ran measured it), `harness` (the apparatus was

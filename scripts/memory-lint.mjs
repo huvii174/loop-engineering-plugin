@@ -49,7 +49,17 @@ const ROOT_CAUSES = new Set([
   'incomplete-model',   // the mental or threat model missed a case
 ]);
 
-const SOLUTION_KEYS = ['type', 'area', 'date', 'run', 'severity', 'root_cause', 'status'];
+/**
+ * Required frontmatter. `severity` is deliberately NOT here: a real corpus of 66
+ * entries graded 79% of itself `high`, which is a field that costs a write and
+ * buys no filter. `caught_at` replaces the signal it was meant to carry and is
+ * factual — how far the defect got before something caught it — so it is left
+ * ABSENT rather than guessed when the entry does not settle it.
+ */
+const SOLUTION_KEYS = ['type', 'area', 'date', 'run', 'root_cause', 'status'];
+
+/** How far the defect got before something caught it. Closed; optional. */
+const CAUGHT_AT = new Set(['merged', 'review', 'in-run']);
 
 // ------------------------------------------------------------------- utilities
 
@@ -222,6 +232,7 @@ function checkSchema(memDir, findings) {
   const missing = [];
   const badCause = [];
   const advisory = [];
+  const badCaught = [];
   const unidentified = [];
   const byId = new Map();
   for (const f of mdFiles(dir)) {
@@ -232,6 +243,10 @@ function checkSchema(memDir, findings) {
     const name = relative(memDir, f);
     const absent = SOLUTION_KEYS.filter((k) => !new RegExp(`^${k}:`, 'm').test(head));
     if (absent.length) missing.push(`${name} (${absent.join(', ')})`);
+    const caught = /^caught_at:\s*(.+)$/m.exec(head);
+    if (caught && !CAUGHT_AT.has(caught[1].trim())) {
+      badCaught.push(`${name}: ${caught[1].trim().slice(0, 40)}`);
+    }
     const cause = /^root_cause:\s*(.+)$/m.exec(head);
     if (cause && !ROOT_CAUSES.has(cause[1].trim())) badCause.push(`${name}: ${cause[1].trim().slice(0, 48)}`);
     // A `type: bug` entry without a `must_not:` is advice. The corpus records
@@ -261,6 +276,16 @@ function checkSchema(memDir, findings) {
         `${collisions.length} solution id(s) are used by more than one entry — two runs allocated the same ` +
         `handle. Renumber the later one; every reference to a duplicated id is ambiguous until you do.`,
       ids: collisions.map(([id, files]) => `${id}: ${files.join(' + ')}`).slice(0, 6),
+    });
+  }
+  if (badCaught.length) {
+    findings.push({
+      check: 'schema', level: 'block', root: 'solutions', count: badCaught.length,
+      message:
+        `${badCaught.length} \`caught_at\` value(s) outside the closed set ` +
+        `(${[...CAUGHT_AT].join(' | ')}). It records how far the defect got before something caught it — ` +
+        `leave it absent rather than widen it.`,
+      ids: badCaught.slice(0, 6),
     });
   }
   if (unidentified.length) {
@@ -304,6 +329,7 @@ function checkSchema(memDir, findings) {
 /** Two bodies citing the same `file:line` under different tags are one entry. */
 function checkDuplicates(memDir, findings) {
   const byAnchor = new Map();
+  const bodyOf = new Map();
   for (const root of ['learnings']) {
     for (const f of walkMd(join(memDir, root))) {
       const text = read(f);
@@ -312,6 +338,7 @@ function checkDuplicates(memDir, findings) {
         const m = /^(L-\d+)\s*(\[[^\]]+\]\[[^\]]+\])?([\s\S]*)$/.exec(chunk);
         if (!m) continue;
         const [, id, tag, body] = m;
+        bodyOf.set(id, body);
         for (const raw of new Set(body.match(/[\w./-]+\.\w+:\d+/g) ?? [])) {
           // Compare basename:line, not the raw string. Two entries citing the
           // same defect write it differently — `tests/conftest.py:362` and
@@ -330,7 +357,13 @@ function checkDuplicates(memDir, findings) {
     const seen = new Set();
     const members = all.filter((m) => !seen.has(m.id) && seen.add(m.id));
     const tags = new Set(members.map((x) => x.tag));
-    if (members.length > 1 && tags.size > 1) {
+    // A pair whose bodies name each other has already been judged: two entries
+    // can share a mechanism and still carry different consequences, and the
+    // right outcome there is a cross-link, not a merge that loses one of them.
+    // The check asks "has anyone looked at this pair?" — the link is the answer.
+    const linked = members.length > 1
+      && members.every((m) => members.filter((o) => o.id !== m.id).every((o) => bodyOf.get(m.id)?.includes(o.id)));
+    if (members.length > 1 && tags.size > 1 && !linked) {
       clusters.push(`${ref} — ${members.map((x) => `${x.id}${x.tag}`).join(' / ')}`);
     }
   }
@@ -376,7 +409,10 @@ function checkCitations(memDir, findings) {
   for (const root of ['learnings', 'decisions']) {
     const text = read(join(memDir, root, '_index.md'));
     if (text === null) continue;
-    const into = splitIndex(text).entries.split('\n').filter((l) => /^\s*-\s/.test(l) && /\barchive\//.test(l));
+    // A line that already marks itself historical is doing the right thing: it
+    // says where bodies went, not that the archive is authority for today.
+    const into = splitIndex(text).entries.split('\n').filter(
+      (l) => /^\s*-\s/.test(l) && /\barchive\//.test(l) && !/\b(ARCHIVED|archived|historical|frozen|retired)\b/.test(l));
     if (into.length) {
       findings.push({
         check: 'cite', level: 'warn', root,

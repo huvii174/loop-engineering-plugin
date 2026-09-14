@@ -194,6 +194,14 @@ a failed approach.
 - **Next:** <what the next iteration should do>
 ```
 
+`loop-record.mjs` refuses a record missing **`Goal criterion targeted`,
+`Injected`, `Recall`, `Actions`, `Verification`, `Evidence` or `Verdict`** —
+the seven a later reader cannot reconstruct from `state.json`. `Delegated`,
+`Learning` and `Next` are narrative: requiring them turns a record into a form.
+It also refuses a `--criterion` that the record's own criterion line does not
+name, because state counting one criterion while the record grades another is a
+mismatch nothing downstream can see.
+
 ## Iteration discipline
 
 - One iteration = one small increment with its own verification. If an increment

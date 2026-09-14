@@ -19,10 +19,18 @@ const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'loop-record.mjs');
 
 const RECORD = [
   '# Iteration 0001 — close C1',
-  '- **Verdict:** pass — the focused test fails without the change',
-  '- **Evidence:** 12 passed, 0 failed',
+  '- **Goal criterion targeted:** C1',
+  '- **Injected:** the already-tried block; L-315 (dismissed)',
   '- **Recall:** L-315 dismissed (document-status-summary, other subsystem)',
+  '- **Actions:** src/api/user.ts — coerce numeric ids at the route boundary',
+  '- **Verification:** pnpm test --filter api -t "rejects bad payloads"',
+  '- **Evidence:** 12 passed, 0 failed',
+  '- **Verdict:** pass — the focused test fails without the change',
 ].join('\n');
+
+/** The same record with one field dropped, for the "refuses a missing X" cases. */
+const without = (field) => RECORD.split('\n')
+  .filter((l) => !l.startsWith(`- **${field}:**`)).join('\n');
 
 /** A fresh .loop/ with one state file, one record, and a recall inbox. */
 function fixture({ state, record = RECORD, recallLog = '' } = {}) {
@@ -110,14 +118,14 @@ const CASES = [
   },
   {
     name: 'refuses a record missing its Evidence line',
-    fixture: { record: '# Iteration 0001\n- **Verdict:** pass\n- **Recall:** none injected\n' },
+    fixture: { record: without('Evidence') },
     args: OK,
     code: 1,
     stderr: '`Evidence:` line',
   },
   {
     name: 'refuses a record missing its Recall line',
-    fixture: { record: '# Iteration 0001\n- **Verdict:** pass\n- **Evidence:** 12 passed\n' },
+    fixture: { record: without('Recall') },
     args: OK,
     code: 1,
     stderr: '`Recall:` line',
@@ -133,6 +141,7 @@ const CASES = [
   },
   {
     name: 'a review-fix records its kind so the plateau counter can step over it',
+    fixture: { record: RECORD.replace('- **Goal criterion targeted:** C1', '- **Goal criterion targeted:** none — a round-2 review-gate finding') },
     args: ['--verdict', 'pass', '--kind', 'review-fix', '--intent', 'close the anchor finding', '--criteria-passed', '7'],
     code: 0,
     check: ({ loop }) => JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8')).history[0].kind === 'review-fix',
@@ -146,6 +155,42 @@ const CASES = [
       const s = JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8'));
       return s.iteration === 0 && readFileSync(join(loop, '.recall-log'), 'utf8') !== '';
     },
+  },
+  {
+    name: 'refuses a record with no Verification — Evidence without provenance is a screenshot',
+    fixture: { record: without('Verification') },
+    args: OK,
+    code: 1,
+    stderr: '`Verification:` line',
+  },
+  {
+    name: 'refuses a record with no Actions line',
+    fixture: { record: without('Actions') },
+    args: OK,
+    code: 1,
+    stderr: '`Actions:` line',
+  },
+  {
+    name: 'refuses a record with no Injected line',
+    fixture: { record: without('Injected') },
+    args: OK,
+    code: 1,
+    stderr: '`Injected:` line',
+  },
+  {
+    // A silent mismatch here corrupts criteria_passed, and nothing downstream
+    // can see it: state counts one criterion while the record grades another.
+    name: 'refuses when --criterion and the record name different criteria',
+    args: ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'x', '--criteria-passed', '1', '--criterion', 'C7'],
+    code: 1,
+    stderr: 'is not named on the record',
+  },
+  {
+    name: 'a criterion quoted as a sentence is matched by the reader, not a substring test',
+    fixture: { record: RECORD.replace('- **Goal criterion targeted:** C1', '- **Goal criterion targeted:** the split honours a selection-shaped Enter') },
+    args: ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'x', '--criteria-passed', '1',
+           '--criterion', 'POST /api/x rejects bad payloads and returns 422 with a field list'],
+    code: 0,
   },
   {
     // The gate ran on 51 of 58 runs in a real archive and left a trace on four.

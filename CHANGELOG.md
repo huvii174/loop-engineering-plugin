@@ -114,6 +114,28 @@ in prose and asked a script to count it; only one of those two contracts held.
   are injected as `S:<slug>` and now reach `.recall-log`, check 7 and the
   hit-rate pass; they logged as `id: null` before, so the deepest tier spent
   budget and left nothing to maintain it by.
+- **`severity` stops being required; `caught_at` carries the signal instead.**
+  A real corpus of 66 solution entries graded 79% of itself `high` — a filter
+  that returns almost everything is not a filter, and the write cost bought
+  nothing. `caught_at` records a fact rather than a judgement: `merged` (it
+  reached the branch or production before anything caught it), `review` (the
+  gate or the verifier caught it), `in-run`. It is left **absent** rather than
+  guessed, because guessing it is the failure the store exists to warn about: a
+  keyword pass over "merged" and "shipped" was wrong on 5 of 24 entries — three
+  were counterfactual ("would have shipped"; it did not), two described a
+  ProseMirror node merge. The 16 entries whose own sentence settles it were
+  judged one at a time.
+- **`loop-record` refuses seven of the record's ten fields, not three.**
+  `Goal criterion targeted`, `Injected`, `Actions` and `Verification` join
+  `Verdict`, `Evidence` and `Recall` — the seven a later reader cannot
+  reconstruct from `state.json`. `Delegated`, `Learning` and `Next` stay
+  narrative: requiring them turns a record into a form. It also refuses a
+  `--criterion` the record's own criterion line does not name, because state
+  counting one criterion while the record grades another is a mismatch nothing
+  downstream can see.
+- **Every closed rollup cites its decisions.** Four cited none, against a
+  contract that says a rollup cites and does not restate. Each now carries a
+  `## Decisions` table mapping row → the `D-` range its `item-N.md` holds.
 - **The review gate leaves a trace.** It ran on 51 of 58 runs with iteration
   records and set `state.review_gate` on four, because nothing wrote the field —
   the most expensive step in the loop was the least visible afterwards, and no

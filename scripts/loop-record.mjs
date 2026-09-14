@@ -124,12 +124,56 @@ function recordPath(dir, n) {
 
 // ---------------------------------------------------------------------- checks
 
-/** Sections `loop-engine`'s iteration-record format requires before a verdict counts. */
+/**
+ * The iteration-record fields a later reader cannot reconstruct from state.json.
+ *
+ * Not all ten of the format's fields: `Delegated`, `Learning` and `Next` are
+ * narrative, and requiring them turns a record into a form. These seven each
+ * have a consumer that breaks without them —
+ *
+ *   Verdict / Evidence            what the run claims, and what proves it
+ *   Recall                        the accounting `.recall-log` is emptied against
+ *   Goal criterion targeted       what the verifier graded; cross-checked below
+ *   Verification                  the commands Evidence came out of — output
+ *                                 without provenance is a screenshot
+ *   Actions                       what changed, when the diff is long gone
+ *   Injected                      what shaped this iteration's context
+ *
+ * Compliance across a real archive ran 61-80% on the full ten and 100% on
+ * nothing; these are the subset worth refusing over.
+ */
 const REQUIRED_SECTIONS = [
   ['Verdict', /^\s*[-*]?\s*\*{0,2}Verdict\*{0,2}\s*:/im],
   ['Evidence', /^\s*[-*]?\s*\*{0,2}Evidence\*{0,2}\s*:/im],
   ['Recall', /^\s*[-*]?\s*\*{0,2}Recall\*{0,2}\s*:/im],
+  ['Goal criterion targeted', /^\s*[-*]?\s*\*{0,2}Goal criterion targeted\*{0,2}\s*:/im],
+  ['Verification', /^\s*[-*]?\s*\*{0,2}Verification\*{0,2}\s*:/im],
+  ['Actions', /^\s*[-*]?\s*\*{0,2}Actions\*{0,2}\s*:/im],
+  ['Injected', /^\s*[-*]?\s*\*{0,2}Injected\*{0,2}\s*:/im],
 ];
+
+/**
+ * The record's criterion line must name the criterion being recorded.
+ *
+ * `--criterion C3` beside a record reading `Goal criterion targeted: C7` is a
+ * silent mismatch that corrupts the `criteria_passed` accounting the plateau
+ * counter runs on, and nothing downstream can see it. Checked only for a short,
+ * id-shaped value: a criterion quoted as a whole sentence is matched by the
+ * reader, not by a substring test.
+ */
+const ID_SHAPED = 24;
+
+function criterionMismatch(record, criterion) {
+  if (!criterion || criterion.length > ID_SHAPED) return null;
+  const line = /^\s*[-*]?\s*\*{0,2}Goal criterion targeted\*{0,2}\s*:(.*)$/im.exec(record);
+  if (!line) return null; // its absence is already a REQUIRED_SECTIONS failure
+  if (line[1].toLowerCase().includes(criterion.toLowerCase())) return null;
+  return (
+    `--criterion ${JSON.stringify(criterion)} is not named on the record's ` +
+    `\`Goal criterion targeted:\` line (${JSON.stringify(line[1].trim().slice(0, 60))}). ` +
+    `The two must agree, or criteria_passed counts one criterion while the record grades another.`
+  );
+}
 
 /** IDs the recall hook injected and nobody has accounted for yet. */
 function recallLogIds(dir) {
@@ -248,6 +292,8 @@ function main(argv) {
       for (const [name, re] of REQUIRED_SECTIONS) {
         if (!re.test(record)) problems.push(`${rp} has no \`${name}:\` line (required by the iteration-record format).`);
       }
+      const mismatch = criterionMismatch(record, args.criterion ? String(args.criterion) : null);
+      if (mismatch) problems.push(mismatch);
       const missing = reconcileRecall(record, recallLogIds(dir));
       if (missing.length) {
         problems.push(
