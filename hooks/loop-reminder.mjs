@@ -34,14 +34,21 @@ const MAX_SLUGS = 8;
  * ignore check calls that one healthy — the easy property standing in for the
  * one that matters, which is the defect this whole warning exists to name.
  *
+ * Asked from INSIDE the store, not from the project root. Both shapes are
+ * legitimate — the project's own repo tracking `.loop/memory/`, or a repo of its
+ * own nested there so a company checkout carries no private notes — and only the
+ * first is visible to `git ls-files` run at the root. Asking where the files are
+ * answers for both.
+ *
  * Outside a repo `git ls-files` exits non-zero, and that stays silent: a project
  * with no git at all has made a different choice, and a hook that lectures it
  * about recoverability every session is noise rather than a signal.
  */
 function memoryUntracked(cwd) {
-  if (!existsSync(join(cwd, '.loop', 'memory'))) return false;
+  const memDir = join(cwd, '.loop', 'memory');
+  if (!existsSync(memDir)) return false;
   try {
-    const tracked = execFileSync('git', ['ls-files', '--', '.loop/memory'], { cwd, encoding: 'utf8' });
+    const tracked = execFileSync('git', ['ls-files'], { cwd: memDir, encoding: 'utf8' });
     return tracked.trim() === '';
   } catch {
     return false; // no git at all — nothing this hook can usefully say

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.1 — 2026-09-14
+
+**The git-recoverability warning asked from the wrong directory.** 0.16.0 checked
+`git ls-files -- .loop/memory` from the project root, which sees only one of the
+two legitimate shapes: the project's own repo tracking the store. A store given a
+repo of its own — so a company checkout carries no private engineering notes — is
+invisible to that question, and the warning fired on a store that was fully
+tracked. Asked from inside the store instead, which answers for both shapes and
+still stays silent where there is no git at all.
+
+Found by taking the advice: setting up exactly that arrangement on a real
+509-entry store made the warning contradict the fix it had just asked for.
+
 ## 0.16.0 — 2026-09-14
 
 **The record is code, for the same reason the breaker is.** Measured against a

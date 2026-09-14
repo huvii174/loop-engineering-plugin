@@ -537,6 +537,27 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   check('reminder: a tracked store is silent', !r.out.includes('is tracked'), r.out.slice(0, 160));
 }
 
+{
+  // The other legitimate shape: a repo of the store's own, so a company checkout
+  // carries no private notes. Invisible to `git ls-files` run at the project
+  // root, which is why the question is asked from inside the store.
+  const t = tree(proj({}), { index: '# Learnings index\n- L-001 [gotcha][x] a symptom\n' });
+  cleanup.push(t);
+  const mem = join(t, '.loop', 'memory');
+  const git = (cwd, ...a) => spawnSync('git', a, { cwd, stdio: 'ignore' });
+  git(t, 'init', '-q');
+  writeFileSync(join(t, '.gitignore'), '.loop/\n');
+  git(mem, 'init', '-q');
+  git(mem, 'config', 'user.email', 't@example.com');
+  git(mem, 'config', 'user.name', 'T');
+  git(mem, 'add', '-A');
+  git(mem, 'commit', '-qm', 'store');
+
+  const r = runHook('loop-reminder.mjs', { cwd: t });
+  check('reminder: a store with a repo of its own is silent, though the parent ignores it',
+    !r.out.includes('is tracked'), r.out.slice(0, 160));
+}
+
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });
 console.log(failed === 0 ? '\nall hook checks passed' : `\n${failed} hook check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);
