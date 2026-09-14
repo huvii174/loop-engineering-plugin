@@ -122,6 +122,81 @@ export function resolveThresholds(state = {}, overrides = {}) {
   return { thresholds: { ...t, ...overrides }, warnings };
 }
 
+// -------------------------------------------------------------------- verdicts
+
+/** The three verdicts every counter reads. Anything else is a record defect. */
+const VERDICTS = new Set(['pass', 'fail', 'escalate']);
+
+/** Ordered because a verdict naming both outcomes reports the worse one:
+ *  "APPROVE (1-5) / REJECT (6)" is an iteration with a rejected criterion. */
+const COERCIONS = [
+  [/\b(reject|rejected|incomplete|partial|failed|failing)\b/i, 'fail'],
+  [/\b(approved?|passed|clean|cleared|verified|green)\b/i, 'pass'],
+  [/\bescalat/i, 'escalate'],
+];
+
+/**
+ * Read a recorded verdict as one of the three the counters understand.
+ *
+ * Free-text verdicts are why this exists. A real store held 37 of 311 entries
+ * outside the enum — `"verifier: REJECT (criterion 3) / APPROVE (1,2,4,5)"`,
+ * `"self-verified green"`, `"partial"`, `null` — and every one was invisible to
+ * `trailingFails`, which compares `=== 'fail'`. Two consecutive REJECTs on one
+ * criterion scored a stagnation of 0: the breaker could not see the failures it
+ * exists to count.
+ *
+ * Coercion is a migration path, never the contract. `loop-record.mjs` writes the
+ * enum, and `recordContractFrom()` marks the iteration from which that held, so
+ * an entry written under the contract is refused rather than guessed at.
+ * Everything older is coerced and named in a warning — the point is that a
+ * mapping the breaker had to guess stays visible, rather than moving the defect
+ * somewhere harder to see than the breaker.
+ */
+export function normalizeVerdict(raw) {
+  const text = String(raw ?? '').trim();
+  const lower = text.toLowerCase();
+  if (VERDICTS.has(lower)) return { verdict: lower, coerced: false, raw: text };
+  for (const [re, verdict] of COERCIONS) {
+    if (re.test(text)) return { verdict, coerced: true, raw: text };
+  }
+  // An unreadable verdict is an unverifiable attempt, which is what `escalate`
+  // already means — and `countable()` drops those, so a guess cannot invent a
+  // failure streak out of a record nobody can read.
+  return { verdict: 'escalate', coerced: true, raw: text };
+}
+
+/**
+ * The iteration from which `loop-record.mjs` owned this state file, or
+ * Infinity when it never has. Entries at or after it are held to the enum.
+ */
+function recordContractFrom(state) {
+  const n = Number(state.record_contract_since);
+  return Number.isFinite(n) ? n : Infinity;
+}
+
+/**
+ * Attach the normalized verdict to every entry, and collect what it cost.
+ *
+ * `unparseable` carries entries the contract covers and the enum does not —
+ * those are a hard error, because a record written by the script and still
+ * out of enum means the script was bypassed.
+ */
+function readVerdicts(state, entries) {
+  const from = recordContractFrom(state);
+  const coerced = [];
+  const unparseable = [];
+  const out = entries.map((h) => {
+    const v = normalizeVerdict(h.verdict);
+    if (v.coerced) {
+      const where = { n: h.n, raw: v.raw, as: v.verdict };
+      if (Number(h.n ?? 0) >= from) unparseable.push(where);
+      else coerced.push(where);
+    }
+    return { ...h, _verdict: v.verdict, _coerced: v.coerced };
+  });
+  return { entries: out, coerced, unparseable };
+}
+
 // --------------------------------------------------------------- normalization
 
 /**
@@ -196,9 +271,13 @@ function loadState(path) {
  */
 function countable(state) {
   const from = Number(state.breaker_reset_at_iteration ?? 0);
-  return state.history
-    .filter((h) => Number(h.n ?? 0) > from)
-    .filter((h) => String(h.verdict ?? '').toLowerCase() !== 'escalate');
+  const after = state.history.filter((h) => Number(h.n ?? 0) > from);
+  const read = readVerdicts(state, after);
+  return {
+    entries: read.entries.filter((h) => h._verdict !== 'escalate'),
+    coerced: read.coerced,
+    unparseable: read.unparseable,
+  };
 }
 
 /**
@@ -215,11 +294,33 @@ function markTransparency(entries) {
   let previous = 0;
   return entries.map((h) => {
     const scored = typeof h.criteria_passed === 'number';
-    const transparent =
-      String(h.verdict ?? '').toLowerCase() === 'pass' && scored && h.criteria_passed <= previous;
+    const transparent = h._verdict === 'pass' && scored && h.criteria_passed <= previous;
     if (scored) previous = h.criteria_passed;
     return { ...h, _transparent: transparent };
   });
+}
+
+/**
+ * Iterations the plateau counter must not read.
+ *
+ * An iteration whose `kind` is `review-fix` closes a review-gate finding, not a
+ * criterion, so the criteria-met count is flat by construction while it runs.
+ * Counting it as a plateau punishes the thorough gate and rewards the shallow
+ * one — a real run tripped `STOP (plateau)` at the close of a goal whose every
+ * criterion was already verifier-approved, because three gate-fix iterations
+ * followed. The failure chain is untouched: a review-fix that fails is a
+ * failure like any other.
+ *
+ * Read from a recorded field rather than inferred from the `criterion` string,
+ * because a machine reading prose is the defect the verdict enum just closed.
+ */
+function isReviewFix(h) {
+  return String(h.kind ?? '').toLowerCase() === 'review-fix';
+}
+
+/** Entries the plateau counter reads: scored, and aimed at a criterion. */
+function plateauEntries(entries) {
+  return entries.filter((h) => typeof h.criteria_passed === 'number' && !isReviewFix(h));
 }
 
 /**
@@ -231,7 +332,7 @@ function trailingFails(entries) {
   const out = [];
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i]._transparent) continue;
-    if (String(entries[i].verdict ?? '').toLowerCase() === 'fail') out.push(entries[i]);
+    if (entries[i]._verdict === 'fail') out.push(entries[i]);
     else break;
   }
   return out;
@@ -256,10 +357,34 @@ function quoted(value) {
 
 export function analyze(state, overrides = {}) {
   const { thresholds: t, warnings } = resolveThresholds(state, overrides);
-  const entries = markTransparency(countable(state));
+  const counted = countable(state);
+  const entries = markTransparency(counted.entries);
   const fails = trailingFails(entries);
   const iteration = Number(state.iteration ?? 0);
   const maxIterations = Number(state.max_iterations ?? 12);
+
+  for (const c of counted.coerced) {
+    warnings.push(
+      `history n=${c.n} records verdict ${JSON.stringify(c.raw)}, which is not ` +
+      `pass|fail|escalate — counted as "${c.as}". Record through ` +
+      `scripts/loop-record.mjs so the verdict the counters read is the verdict written.`
+    );
+  }
+
+  // A record written under the contract and still out of enum means the script
+  // was bypassed. Refusing beats counting a guess: the mapping above is a
+  // migration path for history that predates the script, not a second contract.
+  if (counted.unparseable.length) {
+    const list = counted.unparseable.map((u) => `n=${u.n} ${JSON.stringify(u.raw)}`).join(', ');
+    return {
+      stop: true, status: 'stuck', reason: 'unreadable-record', error: true,
+      counters: { iteration, max_iterations: maxIterations }, warnings,
+      detail:
+        `${counted.unparseable.length} history entr${counted.unparseable.length === 1 ? 'y' : 'ies'} ` +
+        `at or after the record contract (iteration ${state.record_contract_since}) carry a verdict ` +
+        `outside pass|fail|escalate: ${list}. Rewrite through scripts/loop-record.mjs.`,
+    };
+  }
 
   const counters = {
     iteration,
@@ -269,6 +394,7 @@ export function analyze(state, overrides = {}) {
     frustration: 0,
     plateau: 0,
     bookkeeping: entries.filter((h) => h._transparent).length,
+    review_fixes: entries.filter(isReviewFix).length,
   };
 
   // plateau — iterations keep "passing" while the criteria-met count stays flat.
@@ -276,7 +402,7 @@ export function analyze(state, overrides = {}) {
   // increments!) but the goal is not moving. Needs `criteria_passed` recorded
   // per history entry; entries without it are skipped (backward compatible).
   {
-    const scored = entries.filter((h) => typeof h.criteria_passed === 'number');
+    const scored = plateauEntries(entries);
     if (scored.length) {
       const last = scored[scored.length - 1].criteria_passed;
       let flat = 0;
@@ -314,6 +440,20 @@ export function analyze(state, overrides = {}) {
     }
   }
 
+  // The design gate, re-read from state rather than trusted once. A goal whose
+  // min-across-dimensions confidence never reached 95% may still run — the
+  // numbered-assumption escape hatch is deliberate — but it leaves a machine
+  // readable trace, because ten runs shipped at 85-93% with nothing recording
+  // what was assumed in place of the answers the interview never got.
+  const gate = designGate(state);
+  if (gate.warning) warnings.push(gate.warning);
+  if (gate.stop) {
+    return {
+      stop: true, status: 'stuck', reason: 'design-gate', error: true,
+      counters, warnings, detail: gate.detail,
+    };
+  }
+
   // Most actionable first.
   if (maxIterations > 0 && iteration >= maxIterations) {
     return {
@@ -340,7 +480,7 @@ export function analyze(state, overrides = {}) {
     };
   }
   if (counters.plateau >= t.plateau && plateauWindowHasPass(entries, t.plateau)) {
-    const scored = entries.filter((h) => typeof h.criteria_passed === 'number');
+    const scored = plateauEntries(entries);
     return {
       stop: true, status: 'stuck', reason: 'plateau', counters, warnings,
       detail: `criteria-met count stuck at ${scored[scored.length - 1].criteria_passed} for ${counters.plateau} iterations despite passing verdicts — busy but not progressing`,
@@ -353,10 +493,40 @@ export function analyze(state, overrides = {}) {
   };
 }
 
+/** The confidence the design gate reached, and whether it may proceed.
+ *
+ *  `confidence_at_design` holds a number. It used to hold a placeholder string,
+ *  and 22 of 75 real runs filled it with an essay ("hands-off: no interview; 6
+ *  numbered assumptions") — unreadable to anything but a person. A legacy string
+ *  still warns rather than stops: the run it describes is already history.
+ */
+const CONFIDENCE_GATE = 95;
+
+function designGate(state) {
+  const raw = state.confidence_at_design;
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== 'number') {
+    return {
+      warning:
+        `confidence_at_design is ${JSON.stringify(String(raw).slice(0, 60))}, not a number — ` +
+        `the design gate cannot be checked. Write the min-across-dimensions percent as an integer ` +
+        `and put the prose in confidence_note.`,
+    };
+  }
+  const assumptions = Array.isArray(state.assumptions) ? state.assumptions.filter(Boolean) : [];
+  if (raw >= CONFIDENCE_GATE || assumptions.length) return {};
+  return {
+    stop: true,
+    detail:
+      `the design gate closed at ${raw}%, under the ${CONFIDENCE_GATE}% minimum, and state.json records ` +
+      `no assumptions. Either run another interview round, or record the numbered assumptions that ` +
+      `stand in for the answers — in "assumptions": ["…"] — so what was guessed is on the record.`,
+  };
+}
+
 /** Does the plateau window contain a passing verdict? (A flat run of pure failures is no-progress, not plateau.) */
 function plateauWindowHasPass(entries, size) {
-  const window = entries.filter((h) => typeof h.criteria_passed === 'number').slice(-size);
-  return window.some((h) => String(h.verdict ?? '').toLowerCase() === 'pass');
+  return plateauEntries(entries).slice(-size).some((h) => h._verdict === 'pass');
 }
 
 /**
@@ -400,6 +570,12 @@ function advisories(entries, fails, counters, t) {
       detail: `${counters.bookkeeping} iteration(s) closed no criterion and are transparent to the failure counters — recording work does not reset a streak.`,
     });
   }
+  if (counters.review_fixes) {
+    out.push({
+      reason: 'review-fix',
+      detail: `${counters.review_fixes} iteration(s) closed a review-gate finding and are transparent to the plateau counter — a thorough gate costs iterations without moving the criteria count, and that is the gate working.`,
+    });
+  }
   return out;
 }
 
@@ -407,7 +583,7 @@ function advisories(entries, fails, counters, t) {
 
 /** The "already tried (do NOT repeat)" block for the next iteration's prompt. */
 export function contextBlock(state) {
-  const entries = markTransparency(countable(state));
+  const entries = markTransparency(countable(state).entries);
   const attempts = entries.filter((h) => h.approach || h.error_signature || h.intent);
   const lines = ['## Already tried — do NOT repeat unchanged'];
 
@@ -415,8 +591,9 @@ export function contextBlock(state) {
     lines.push('- (nothing yet — this is the first attempt)');
   } else {
     for (const h of attempts) {
-      const verdict = String(h.verdict ?? '?').toLowerCase();
-      const mark = h._transparent ? '[bookkeeping]' : verdict === 'pass' ? '[pass]' : '[fail]';
+      const mark = h._transparent ? '[bookkeeping]'
+        : isReviewFix(h) ? '[review-fix]'
+        : h._verdict === 'pass' ? '[pass]' : '[fail]';
       const why = h.error_signature ? ` -> ${h.error_signature}` : '';
       lines.push(`- ${mark} iter ${h.n}: ${h.approach ?? h.intent ?? '(unrecorded)'}${why}`);
     }
@@ -438,7 +615,7 @@ export function contextBlock(state) {
     `- iteration ${a.counters.iteration}/${a.counters.max_iterations} | ` +
     `stagnation ${a.counters.stagnation} | frustration ${a.counters.frustration} | ` +
     `consecutive fails ${a.counters.trailing_fails} | criteria-flat ${a.counters.plateau} | ` +
-    `bookkeeping ${a.counters.bookkeeping}`
+    `bookkeeping ${a.counters.bookkeeping} | review-fixes ${a.counters.review_fixes}`
   );
   for (const adv of a.advisories ?? []) lines.push(`- ADVISORY (${adv.reason}): ${adv.detail}`);
   // A mis-set threshold field distorts every counter above it, so the next
@@ -481,6 +658,11 @@ function main(argv) {
   warn(verdict.warnings);
   if (args.includes('--json')) {
     process.stdout.write(JSON.stringify(verdict, null, 2) + '\n');
+  } else if (verdict.error) {
+    // A record the breaker cannot read is a config problem, not a verdict on
+    // the work — exit 1, the same code a missing state file gets.
+    process.stderr.write(`loop-breaker: ${verdict.reason} — ${verdict.detail}\n`);
+    return 1;
   } else if (verdict.stop) {
     process.stdout.write(`STOP (${verdict.reason}) [plugin v${pluginVersion()}] -> set status: "${verdict.status}"\n${verdict.detail}\n`);
   } else {
@@ -488,12 +670,13 @@ function main(argv) {
       `CONTINUE [plugin v${pluginVersion()}] — iteration ${verdict.counters.iteration}/${verdict.counters.max_iterations}, ` +
       `stagnation ${verdict.counters.stagnation}, frustration ${verdict.counters.frustration}, ` +
       `consecutive fails ${verdict.counters.trailing_fails}, criteria-flat ${verdict.counters.plateau}, ` +
-      `bookkeeping ${verdict.counters.bookkeeping}\n`
+      `bookkeeping ${verdict.counters.bookkeeping}, review-fixes ${verdict.counters.review_fixes}\n`
     );
     for (const adv of verdict.advisories ?? []) {
       process.stdout.write(`ADVISORY (${adv.reason}): ${adv.detail}\n`);
     }
   }
+  if (verdict.error) return 1;
   return verdict.stop ? 2 : 0;
 }
 

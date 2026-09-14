@@ -124,23 +124,28 @@ increment** from the design's work breakdown:
    tick the criterion in `.loop/goal.md` — only items under `## Success
    criteria` count as criteria. The goal is only "met" when the verifier — not
    you — has confirmed every criterion with evidence.
-4. **Record** — append `.loop/iterations/NNNN.md` (format in the loop-engine
-   skill, including the `Injected:` and `Delegated:` lines) and update
-   `.loop/state.json`: increment `iteration`, append the history entry (`n`,
-   `intent`, `approach`, `verdict`, `error_signature`, `criterion`,
-   **`criteria_passed`** — the count of verifier-APPROVED criteria after this
-   iteration), set `status` and `updated`.
+4. **Record** — write `.loop/iterations/NNNN.md` (format in the loop-engine
+   skill), then hand it to the recorder:
 
-   `criteria_passed` is not optional bookkeeping: it is what lets the breaker
-   see a plateau, and what makes a criterion-closing pass distinguishable from a
-   bookkeeping pass. Omit it and an iteration that only tidied records will
-   silently reset the failure counters that were about to stop a stuck loop.
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-record.mjs" \
+     --verdict pass|fail|escalate --kind criterion|review-fix|bookkeeping \
+     --criterion <id> --criteria-passed <n> \
+     --intent "<one sentence>" [--approach "<what was tried>"] [--signature "<the failure>"]
+   ```
 
-   **`.loop/.recall-log` is an inbox, and Record empties it**: once every ID in
-   it is accounted on this record's `Recall:` line, truncate the log. The
-   durable history is the `Recall:` lines themselves — that is what the memory
-   command's hit-rate pass reads — and an unemptied log makes the next record
-   re-answer for injections that were already judged.
+   The record is code, for the same reason the breaker is. The script appends
+   the history entry, bumps `iteration`, reconciles every `.loop/.recall-log` ID
+   against the record's `Recall:` line, and empties that inbox last. Exit `1`
+   means nothing was written and stderr says what to fix — a verdict outside the
+   enum, a missing `Evidence:` line, an unaccounted recall ID, an `iteration`
+   that disagrees with `history`.
+
+   Two arguments carry the whole weight. **`--verdict`** is what every counter
+   reads: a verifier that approved four criteria and rejected one is `fail`, and
+   the detail belongs on the record's `Verdict:` line. **`--kind`** says what
+   the iteration aimed at, and `review-fix` is what keeps the plateau counter
+   from punishing a thorough review gate.
 5. **Learn (scratch tier)** — if this iteration produced a lesson, append it to
    `.loop/memory/scratch/run.md`, tagged `(<run_id>, iter N)`. Write it raw and
    immediately; scratch is cheap. It gets distilled into the right shape

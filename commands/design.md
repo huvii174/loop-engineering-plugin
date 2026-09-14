@@ -188,7 +188,9 @@ mtime predates the implementation.
   "tier": "trivial | small | medium | large",
   "iteration": 0,
   "max_iterations": 12,
-  "confidence_at_design": "<your final min-across-dimensions %>",
+  "confidence_at_design": 96,
+  "assumptions": [],
+  "confidence_note": "<optional prose: critic rounds, how the gate closed>",
   "created": "<ISO date>",
   "updated": "<ISO date>",
   "breaker_thresholds": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
@@ -196,6 +198,12 @@ mtime predates the implementation.
   "history": []
 }
 ```
+
+`confidence_at_design` is an **integer** — the min across dimensions. Under 95 it
+travels with the numbered assumptions from `## Assumptions (signed off)`, copied
+into `assumptions`, and the breaker refuses to start a run that has neither. That
+pairing is the whole record of what was guessed in place of an answer, so keep
+the two in one edit.
 
 `breaker_thresholds` holds THRESHOLDS, never live counters — the breaker computes
 counters from `history` on every run. Leave the defaults unless deliberately

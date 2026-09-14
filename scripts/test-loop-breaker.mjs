@@ -288,6 +288,123 @@ const CASES = [
       { n: 1, approach: 'patch the handler', verdict: 'fail', error_signature: 'ZodError missing field' },
     ] },
   },
+
+  // ---- verdict normalization (history written before loop-record.mjs) ------
+  {
+    // The real shape from run-2026-08-29-759-5: two consecutive verifier
+    // REJECTs recorded as prose, which `=== 'fail'` scored as zero failures.
+    name: 'legacy prose REJECTs are counted as failures, with a warning naming each',
+    stop: false,
+    counters: { trailing_fails: 2 },
+    warnings: ['pass|fail|escalate', 'loop-record.mjs'],
+    state: { iteration: 2, max_iterations: 12, history: [
+      { n: 1, approach: 'anchor on the saved offsets', verdict: 'verifier: REJECT (criterion 3) / APPROVE (1,2,4,5)', error_signature: 'offsets stale after reload' },
+      { n: 2, approach: 'recompute on mount', verdict: 'verifier: REJECT (criterion 3 again, via mutation test)', error_signature: 'remount drops the decoration' },
+    ] },
+  },
+  {
+    name: 'a verdict naming both outcomes reports the worse one — a REJECT is a fail',
+    stop: false,
+    counters: { trailing_fails: 1 },
+    state: { iteration: 1, max_iterations: 12, history: [
+      { n: 1, approach: 'macroize the handlers', verdict: 'verifier: APPROVE (1-5) / REJECT (6)' },
+    ] },
+  },
+  {
+    name: 'legacy "self-verified green" reads as a pass and closes a failure streak',
+    stop: false,
+    counters: { trailing_fails: 0 },
+    state: { iteration: 2, max_iterations: 12, history: [
+      { n: 1, approach: 'first attempt', verdict: 'fail', error_signature: 'boom' },
+      { n: 2, approach: 'second attempt', verdict: 'self-verified green', criteria_passed: 1 },
+    ] },
+  },
+  {
+    // An unreadable verdict is an unverifiable attempt, which `escalate`
+    // already means — and countable() drops those, so a guess cannot invent a
+    // failure streak out of a record nobody can read.
+    // `escalate` entries are dropped by countable(), so the fail at n=1 stays
+    // the newest countable entry: 1, not 2 (an invented failure) and not 0 (a
+    // silent pass closing the streak). An unreadable verdict must do neither.
+    name: 'an empty verdict is escalate — it neither invents a failure nor closes the streak',
+    stop: false,
+    counters: { trailing_fails: 1 },
+    warnings: ['not pass|fail|escalate'],
+    state: { iteration: 2, max_iterations: 12, history: [
+      { n: 1, approach: 'first attempt', verdict: 'fail', error_signature: 'boom' },
+      { n: 2, approach: 'second attempt', verdict: '' },
+    ] },
+  },
+  {
+    name: 'under the record contract a prose verdict is refused, not coerced',
+    stop: true, reason: 'unreadable-record',
+    state: { iteration: 2, max_iterations: 12, record_contract_since: 1, history: [
+      { n: 1, verdict: 'pass', criteria_passed: 1, kind: 'criterion' },
+      { n: 2, verdict: 'verifier: APPROVE — all 5 criteria met', criteria_passed: 1, kind: 'criterion' },
+    ] },
+  },
+
+  // ---- plateau vs the review gate ----------------------------------------
+  {
+    // run-2026-09-03-759-36: every criterion verifier-APPROVED, then three
+    // iterations closing review-gate findings. The criteria count is flat by
+    // construction while those run; counting them punishes the thorough gate.
+    name: 'plateau steps over review-fix iterations',
+    stop: false,
+    counters: { plateau: 1, review_fixes: 3 },
+    advisories: ['review-fix'],
+    state: { iteration: 8, max_iterations: 16, history: [
+      { n: 1, verdict: 'pass', criteria_passed: 7, kind: 'criterion' },
+      { n: 2, verdict: 'pass', criteria_passed: 7, kind: 'review-fix' },
+      { n: 3, verdict: 'pass', criteria_passed: 7, kind: 'review-fix' },
+      { n: 4, verdict: 'pass', criteria_passed: 7, kind: 'review-fix' },
+    ] },
+  },
+  {
+    name: 'plateau still trips when the flat iterations aimed at criteria',
+    stop: true, reason: 'plateau',
+    state: { iteration: 4, max_iterations: 12, history: [
+      { n: 1, verdict: 'pass', criteria_passed: 7, kind: 'criterion' },
+      { n: 2, verdict: 'pass', criteria_passed: 7, kind: 'criterion' },
+      { n: 3, verdict: 'pass', criteria_passed: 7, kind: 'criterion' },
+      { n: 4, verdict: 'pass', criteria_passed: 7, kind: 'criterion' },
+    ] },
+  },
+  {
+    name: 'a review-fix that fails counts as a failure like any other',
+    stop: true, reason: 'stagnation',
+    state: { iteration: 3, max_iterations: 12, history: [
+      { n: 1, verdict: 'fail', kind: 'review-fix', approach: 'a', error_signature: 'anchor lost on toggle' },
+      { n: 2, verdict: 'fail', kind: 'review-fix', approach: 'b', error_signature: 'anchor lost on toggle' },
+      { n: 3, verdict: 'fail', kind: 'review-fix', approach: 'c', error_signature: 'anchor lost on toggle' },
+    ] },
+  },
+
+  // ---- the design gate, re-read from state --------------------------------
+  {
+    name: 'a numeric confidence under 95 with no assumptions refuses to run',
+    stop: true, reason: 'design-gate',
+    state: { iteration: 0, max_iterations: 12, confidence_at_design: 85, history: [] },
+  },
+  {
+    name: 'the numbered-assumption escape hatch clears the gate under 95',
+    stop: false,
+    state: { iteration: 0, max_iterations: 12, confidence_at_design: 85,
+      assumptions: ['the importer owns dedupe', 'ids are stable across reload'], history: [] },
+  },
+  {
+    name: 'a prose confidence warns rather than stopping — that run is already history',
+    stop: false,
+    warnings: ['not a number', 'confidence_note'],
+    state: { iteration: 0, max_iterations: 12,
+      confidence_at_design: 'hands-off: no interview; 6 numbered assumptions', history: [] },
+  },
+  {
+    name: 'a confidence at the gate raises nothing',
+    stop: false,
+    warnings: [],
+    state: { iteration: 0, max_iterations: 12, confidence_at_design: 95, history: [] },
+  },
 ];
 
 const UNITS = [

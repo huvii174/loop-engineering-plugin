@@ -87,23 +87,42 @@ prevents.
   "tier": "small",
   "iteration": 3,
   "max_iterations": 12,
-  "confidence_at_design": "96%",
+  "confidence_at_design": 96,
+  "assumptions": [],
+  "confidence_note": "post plan-critic, 7 findings applied",
   "created": "2026-07-29",
   "updated": "2026-07-29",
   "breaker_thresholds": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
   "breaker_reset_at_iteration": 0,
+  "record_contract_since": 1,
   "history": [
     {"n": 1, "intent": "scaffold API route", "approach": "minimal Express route + fixture test",
-     "verdict": "pass", "error_signature": null, "criterion": "GET /api/x returns 200"},
+     "verdict": "pass", "kind": "criterion", "error_signature": null,
+     "criterion": "GET /api/x returns 200", "criteria_passed": 1},
     {"n": 2, "intent": "add validation", "approach": "zod schema at route boundary",
-     "verdict": "fail", "error_signature": "ZodError: expected string, received number",
-     "criterion": "POST /api/x rejects bad payloads"},
+     "verdict": "fail", "kind": "criterion", "error_signature": "ZodError: expected string, received number",
+     "criterion": "POST /api/x rejects bad payloads", "criteria_passed": 1},
     {"n": 3, "intent": "fix schema mismatch", "approach": "coerce numeric ids in schema",
-     "verdict": "pass", "error_signature": null, "criterion": "POST /api/x rejects bad payloads",
-     "criteria_passed": 2}
+     "verdict": "pass", "kind": "criterion", "error_signature": null,
+     "criterion": "POST /api/x rejects bad payloads", "criteria_passed": 2}
   ]
 }
 ```
+
+**`scripts/loop-record.mjs` is the only writer of `history`.** It refuses a
+verdict outside the enum, a record missing `Verdict:` / `Evidence:` / `Recall:`,
+an `iteration` that disagrees with `history`, and any `.recall-log` ID the
+record never accounts for — then empties that inbox last, so a crash between the
+two leaves the IDs to be answered again rather than lost.
+
+`confidence_at_design` is the **number** the design gate closed at (min across
+dimensions). Under 95 it must be paired with `assumptions` — the numbered
+assumptions standing in for the answers the interview never got — or the breaker
+refuses to start the run. Prose belongs in `confidence_note`.
+
+`record_contract_since` is the iteration from which the recorder owned this file.
+The breaker coerces older free-text verdicts with a warning naming each, and
+refuses anything at or after it that still misses the enum.
 
 `epic` is present only on an epic-driven run (the design gate writes it from
 `active-epic`); it is how `loop-archive.mjs prune` knows an archived run's epic
@@ -118,21 +137,35 @@ counters, set `breaker_reset_at_iteration`. The former spelling `breaker` is
 still read; setting both warns and prefers `breaker_thresholds`.
 
 `criteria_passed` = how many success criteria are verifier-APPROVED after this
-iteration. Record it on **every** entry — it is what lets the breaker see a
-**plateau** (verdicts keep passing while this number stays flat: busy, not
-progressing), a death that failure counters structurally cannot detect.
+iteration. It is what lets the breaker see a **plateau** (verdicts keep passing
+while this number stays flat: busy, not progressing), a death that failure
+counters structurally cannot detect.
 
-Update `state.json` at the END of every iteration, atomically (write full file).
-It must always reflect reality — a crashed loop resumes from it. The circuit
-breaker is evaluated from `history` alone — `approach` and `error_signature`
-exist precisely so the breaker and the "already tried" injection never need to
-re-read every iteration record.
+`kind` says what the iteration aimed at, and only the plateau counter reads it:
+
+| `kind` | The iteration | Plateau |
+|---|---|---|
+| `criterion` | aimed at a success criterion | counted |
+| `review-fix` | closed a review-gate finding | stepped over |
+| `bookkeeping` | records, archives, memory | stepped over |
+
+While review-gate fixes run, the criteria count is flat by construction. Counting
+that as a plateau punishes the thorough gate and rewards the shallow one — a real
+run tripped `STOP (plateau)` at the close of a goal whose every criterion was
+already verifier-approved. The failure chain ignores `kind` entirely: a
+review-fix that fails is a failure like any other.
+
+The breaker is evaluated from `history` alone — `approach` and `error_signature`
+exist precisely so it and the "already tried" injection never re-read an
+iteration record.
 
 **Verdict mapping** (the verifier speaks a three-way vocabulary; records store
 it as): `APPROVE → pass` · `REJECT → fail` · `ESCALATE_HUMAN → escalate`.
-`escalate` entries stop the loop but are **excluded** from stagnation /
-frustration / no-progress counting — an unverifiable attempt is not a failed
-approach.
+A mixed verdict maps to its **worse** half: a verifier that approved four
+criteria and rejected one is `fail`, because the rejected criterion is what the
+next iteration owes. `escalate` entries stop the loop but are **excluded** from
+stagnation / frustration / no-progress counting — an unverifiable attempt is not
+a failed approach.
 
 ## Iteration record format (`iterations/NNNN.md`)
 
@@ -203,6 +236,7 @@ approach.
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-breaker.mjs"   # 0 continue · 2 stop · 1 state error
 node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-breaker.mjs" --context   # "already tried" block
+node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-record.mjs" --help       # the only writer of history
 ```
 
 It reads `state.json.history` and decides deterministically — an instruction a
@@ -222,7 +256,8 @@ a goal that is already met.
 | **Stagnation** | ⚙ script | same error/failure reason 3 consecutive iterations | `stuck` |
 | **Frustration** | ⚙ script | same *action* attempted 3 consecutive iterations (even with different errors) | `stuck` |
 | **No progress** | ⚙ script | 5 consecutive fails with no pass in between | `stuck` |
-| **Plateau** | ⚙ script | `criteria_passed` flat for 4 iterations despite passing verdicts | `stuck` |
+| **Plateau** | ⚙ script | `criteria_passed` flat for 4 `kind: criterion` iterations despite passing verdicts | `stuck` |
+| **Unreadable record** | ⚙ script | a verdict outside the enum at or after `record_contract_since`, or a sub-95 design gate with no assumptions | exit `1` — fix the record |
 | **Advisory** | ⚙ script | any counter one short of its threshold | none — prints `ADVISORY`, exit stays `0` |
 | Verifier escalation | model | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
 | User cancel | model | user says stop | `stopped-user` |

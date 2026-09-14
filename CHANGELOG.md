@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.16.0 — 2026-09-14
+
+**The record is code, for the same reason the breaker is.** Measured against a
+real six-week store of 75 archived runs: 37 of 311 history entries sat outside
+`pass|fail|escalate` — `"verifier: REJECT (criterion 3) / APPROVE (1,2,4,5)"`,
+`"self-verified green"`, `"partial"`, `null` — and every one was invisible to
+`trailingFails`, which compares `=== 'fail'`. Run `759-5` recorded two
+consecutive verifier REJECTs on one criterion, the exact streak the stagnation
+threshold exists to catch, and the counter read zero. The loop wrote its history
+in prose and asked a script to count it; only one of those two contracts held.
+
+- **`scripts/loop-record.mjs` is the only writer of `state.json.history`.** It
+  takes `--verdict` (the enum, not a sentence) and `--kind`, appends the entry,
+  bumps `iteration`, and refuses rather than half-writes: a verdict outside the
+  enum, a `kind` outside `criterion|review-fix|bookkeeping`, a missing
+  `criteria_passed`, an iteration record that does not exist or lacks
+  `Verdict:` / `Evidence:` / `Recall:`, an `iteration` that disagrees with
+  `history` (27 of 75 archived runs carry that mismatch), or a `.recall-log` ID
+  the record never accounts for. It fails **closed** where the hooks fail open —
+  a hook that breaks must not block a user, a recorder that breaks must not
+  leave half a history behind — and every check runs before the single write.
+- **The recall inbox is emptied by the thing that replaces it.** `.recall-log`
+  is truncated only after the record accounting it is on disk, so a crash
+  between the two leaves the IDs to be answered again rather than lost. The real
+  store's log had grown to 127 lines spanning three days and several runs.
+- **The breaker reads verdicts through one normalizer.** History written before
+  the recorder is coerced — a mixed verdict maps to its *worse* half, because a
+  rejected criterion is what the next iteration owes — and every coercion is
+  named in a warning on stderr. `record_contract_since` marks where the enum
+  began to hold; at or after it, an out-of-enum verdict is exit `1` rather than
+  a guess, because a record written by the script and still outside the enum
+  means the script was bypassed. Replaying the real archive, `759-5` now reports
+  `trailing_fails: 2` where it reported 0.
+- **Plateau steps over review-gate fixes.** `kind: review-fix` marks an
+  iteration that closed a review finding rather than a criterion; the
+  criteria-met count is flat by construction while those run. Run `759-36`
+  tripped `STOP (plateau)` at the close of a goal whose every criterion was
+  already verifier-approved, and wrote the fix into its own record on 2026-09-03:
+  *"otherwise a thorough review gate is structurally punished, and the incentive
+  is to run a shallower gate."* The failure chain is untouched — a review-fix
+  that fails is a failure like any other — and `kind` is read from a field rather
+  than inferred from the `criterion` string, because a machine reading prose is
+  the defect the verdict enum just closed.
+- **`confidence_at_design` is a number, and the escape hatch has a shape.** The
+  template held a placeholder string, so 22 of 75 runs filled it with an essay
+  ("hands-off: no interview; 6 numbered assumptions") and ten ran at 85–93%
+  against a gate that asks for 95 with nothing recording what was assumed
+  instead. It now holds an integer, prose moves to `confidence_note`, and the
+  numbered assumptions travel in `assumptions` — the breaker refuses to start a
+  sub-95 run that carries neither. A legacy string warns rather than stops: the
+  run it describes is already history.
+
 ## 0.15.0 — 2026-09-01
 
 **Memory splits into an index and a body, so a store can grow without growing

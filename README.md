@@ -30,6 +30,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | agent | `epic-planner` | proposes the backlog; never designs, never edits |
 | hook | `boundary-gate` · `memory-gate` · `loop-reminder` · `memory-recall` | the deterministic layer (see below) |
 | script | `loop-breaker.mjs` | the circuit breaker, as code rather than as a prompt |
+| script | `loop-record.mjs` | the only writer of `state.json.history` — holds the verdict enum, reconciles the recall inbox, refuses rather than half-writes |
 | script | `loop-archive.mjs` | run/epic archiving, hygiene sweep, retention — deterministic, so the layout cannot drift (`run` · `epic` · `hygiene` · `prune`; all support `--dry-run`, `prune` is dry until `--yes`) |
 | script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree |
 
