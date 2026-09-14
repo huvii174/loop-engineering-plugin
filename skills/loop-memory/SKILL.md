@@ -160,7 +160,10 @@ area: <module/domain>
 date: 2026-07-29
 run: run-2026-07-29
 severity: low | medium | high
-root_cause: wrong-api | missing-config | async-timing | scope | test-isolation | data-shape | dependency | logic | unknown
+root_cause: wrong-api | missing-config | async-timing | scope | test-isolation
+          | data-shape | dependency | logic | unmeasured-claim | harness
+          | incomplete-model | unknown
+root_cause_note: <optional free text when the closed value loses something>
 status: current | stale
 stale_reason: <required when status: stale>
 must_not: <one checkable prohibition, written as a goal.md `Must not:` line>
@@ -181,6 +184,14 @@ red_probe: <optional — the one-line mutation or command that makes it red>
 
 For `type: knowledge` (a pattern or decision rather than a defect), replace
 Symptoms/What-didn't-work with **Context** and **Guidance**.
+
+The last three causes name failures of *verification* rather than of code:
+`unmeasured-claim` (nothing that ran measured it), `harness` (the apparatus was
+wrong, not the subject), `incomplete-model` (the model missed a case). They were
+added from evidence — a real store produced 17 values outside the original nine
+in six weeks, and the class they name accounts for most of its entries, so
+`unknown` had been absorbing its sharpest signal. **The set stays closed**: a
+thirteenth value is a change to this skill, not a choice made mid-run.
 
 **`must_not` is what turns an entry from advice into a constraint**, and it is
 required for `type: bug`. In a real epic, `solutions/false-green-evidence.md` was

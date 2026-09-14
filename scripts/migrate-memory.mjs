@@ -764,6 +764,45 @@ function applySolutionIds(dir, assignments) {
   }
 }
 
+/**
+ * Move an index's maintenance history out of the half that is read every run.
+ *
+ * An index is loaded on every recall; its commentary triggers nothing. A real
+ * store carried 5.8KB of "Maintained <date>: …" notes inside `learnings/_index.md`
+ * — 13% of a file that was 5KB over its reading budget, so moving them alone
+ * brought it back under without touching a single entry.
+ *
+ * The FIRST comment block stays. It is not history: it states how a trigger line
+ * is written and gives the grep that opens a body, and it is read every run for
+ * the same reason the entries are — the next writer needs it. Everything after it
+ * is provenance, which is worth keeping and not worth loading.
+ */
+export function planCommentary(dir, root) {
+  const p = join(dir, root, '_index.md');
+  let text;
+  try { text = readFileSync(p, 'utf8'); } catch { return null; }
+
+  const blocks = [...text.matchAll(/<!--[\s\S]*?-->/g)];
+  if (blocks.length < 2) return null;
+
+  const moved = blocks.slice(1);
+  let out = text;
+  for (const b of [...moved].reverse()) {
+    out = out.slice(0, b.index) + out.slice(b.index + b[0].length);
+  }
+  out = out.replace(/\n{3,}/g, '\n\n');
+
+  return {
+    index: p,
+    maintenance: join(dir, root, '_maintenance.md'),
+    indexText: out,
+    movedText: moved.map((m) => m[0]).join('\n\n'),
+    count: moved.length,
+    before: Buffer.byteLength(text, 'utf8'),
+    after: Buffer.byteLength(out, 'utf8'),
+  };
+}
+
 function main(argv) {
   const args = argv.slice(2);
   const i = args.indexOf('--dir');
@@ -774,6 +813,27 @@ function main(argv) {
   if (!existsSync(dir)) {
     process.stderr.write(`migrate-memory: no such directory: ${dir}\n`);
     return 1;
+  }
+
+  if (args.includes('--extract-commentary')) {
+    let moved = 0;
+    for (const root of ['learnings', 'decisions', 'solutions']) {
+      const plan = planCommentary(dir, root);
+      if (!plan) continue;
+      moved++;
+      process.stdout.write(
+        `${dryRun ? '(dry-run) ' : ''}${root}/_index.md: ${plan.count} maintenance block(s) → ${root}/_maintenance.md ` +
+        `(${Math.round(plan.before / 1024)}KB → ${Math.round(plan.after / 1024)}KB)\n`
+      );
+      if (dryRun) continue;
+      const header = `# ${root} — maintenance log\n\nProvenance for the index beside this file: what each pass folded, and why.\nKept out of \`_index.md\` because it is loaded on every recall and triggers nothing.\n\n`;
+      let existing = null;
+      try { existing = readFileSync(plan.maintenance, 'utf8'); } catch { /* first pass */ }
+      writeFileSync(plan.maintenance, (existing ?? header) + plan.movedText + '\n');
+      writeFileSync(plan.index, plan.indexText);
+    }
+    if (!moved) process.stdout.write('migrate-memory: no index carries maintenance commentary to move\n');
+    return 0;
   }
 
   // Orthogonal to the flat→tree migration: solutions/ was never flat, it only

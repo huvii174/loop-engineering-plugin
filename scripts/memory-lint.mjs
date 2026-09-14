@@ -31,10 +31,22 @@ const INDEX_BUDGET_BYTES = 40 * 1024;  // matches hooks/memory-gate.mjs
 const COMMENTARY_SHARE = 0.05;         // of the budget, before it is worth moving out
 const INDEX_LINE_CHARS = 200;
 
-/** The closed `root_cause` set from the loop-memory contract. */
+/**
+ * The closed `root_cause` set from the loop-memory contract.
+ *
+ * The last three were added from evidence, not guessed: a real store produced 17
+ * values outside the original nine over six weeks, and its most frequent one
+ * named a class the nine had no slot for at all. 77% of that store's entries are
+ * failures of verification rather than of code, and the original set was written
+ * for code — so `unknown` was absorbing the store's single most important
+ * signal. A closed set of twelve greps exactly as well as one of nine.
+ */
 const ROOT_CAUSES = new Set([
   'wrong-api', 'missing-config', 'async-timing', 'scope', 'test-isolation',
   'data-shape', 'dependency', 'logic', 'unknown',
+  'unmeasured-claim',   // nothing that ran measured the claim
+  'harness',            // the measuring apparatus was wrong, not the code
+  'incomplete-model',   // the mental or threat model missed a case
 ]);
 
 const SOLUTION_KEYS = ['type', 'area', 'date', 'run', 'severity', 'root_cause', 'status'];
