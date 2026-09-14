@@ -7,13 +7,14 @@
 *.iml
 node_modules/
 
-# loop run state (dogfooding this plugin on itself). Everything under .loop/ is
-# run exhaust EXCEPT memory/, which the maintenance contract is allowed to Delete
-# from — and "git history is the archive" is only true of a tracked file.
-# Git cannot un-ignore a child of an ignored directory, so the parent is matched
-# with `.loop/*` rather than `.loop/`.
-.loop/*
-!.loop/memory/
-.loop/memory/scratch/
-.loop/memory/*.pre-migration
-.loop/memory/*.post-migration-*
+# loop run state (dogfooding this plugin on itself) — ignored whole, deliberately.
+# This store is a demo that is rebuilt on every dogfood run, so losing it costs
+# nothing; `loop-reminder` still says at session start that a Delete here cannot
+# be recovered, which is true and is the right answer for a throwaway store.
+# A project whose store is real should NOT copy this line — see the `.loop/*` +
+# `!.loop/memory/` pattern in skills/loop-engine.
+.loop/
+
+# evidence copied in for analysis, and local scratch — never shipped
+loop-evd/
+evd/

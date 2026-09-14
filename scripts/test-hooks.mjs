@@ -515,6 +515,28 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   check('fail-open: binary learnings.md → memory-recall exits 0', r.code === 0, `code=${r.code}`);
 }
 
+
+// --------------------------- the store is recoverable only if it is TRACKED
+{
+  const t = tree(proj({}), { index: '# Learnings index\n- L-001 [gotcha][x] a symptom\n' });
+  cleanup.push(t);
+  const git = (...a) => spawnSync('git', a, { cwd: t, stdio: 'ignore' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 'T');
+
+  // Un-ignored and never added is just as unrecoverable as ignored, and an
+  // ignore check calls it healthy — the easy property standing in for the one
+  // that matters, which is the defect the warning itself is about.
+  let r = runHook('loop-reminder.mjs', { cwd: t });
+  check('reminder: an un-ignored store nobody added still warns',
+    r.out.includes('is tracked'), r.out.slice(0, 160));
+
+  git('add', '.loop/memory');
+  r = runHook('loop-reminder.mjs', { cwd: t });
+  check('reminder: a tracked store is silent', !r.out.includes('is tracked'), r.out.slice(0, 160));
+}
+
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });
 console.log(failed === 0 ? '\nall hook checks passed' : `\n${failed} hook check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

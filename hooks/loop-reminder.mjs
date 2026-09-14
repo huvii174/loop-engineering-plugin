@@ -24,22 +24,27 @@ const MAX_SLUGS = 8;
  * Is the memory store outside git?
  *
  * The maintenance contract permits **Delete**, and justifies it with "git
- * history is the archive". That sentence is only true of a tracked file. A real
+ * history is the archive". That sentence is only true of a TRACKED file. A real
  * store of 509 learnings, 547 decisions and 66 solution entries sat entirely
  * untracked — `git ls-files` returned 0 — so every Delete was unrecoverable and
  * nothing said so. One line at session start is the cheapest place to say it.
  *
- * `git check-ignore` exits 1 when the path is NOT ignored, which is the healthy
- * case; any other failure (no git, no repo) means there is nothing to warn about.
+ * Asked as "is anything under the store tracked?", not "is it ignored?". An
+ * un-ignored store nobody ever `git add`ed is just as unrecoverable, and an
+ * ignore check calls that one healthy — the easy property standing in for the
+ * one that matters, which is the defect this whole warning exists to name.
+ *
+ * Outside a repo `git ls-files` exits non-zero, and that stays silent: a project
+ * with no git at all has made a different choice, and a hook that lectures it
+ * about recoverability every session is noise rather than a signal.
  */
 function memoryUntracked(cwd) {
-  const probe = join('.loop', 'memory', 'learnings', '_index.md');
-  if (!existsSync(join(cwd, probe))) return false;
+  if (!existsSync(join(cwd, '.loop', 'memory'))) return false;
   try {
-    execFileSync('git', ['check-ignore', '-q', probe], { cwd, stdio: 'ignore' });
-    return true; // exit 0 — the store is ignored
+    const tracked = execFileSync('git', ['ls-files', '--', '.loop/memory'], { cwd, encoding: 'utf8' });
+    return tracked.trim() === '';
   } catch {
-    return false;
+    return false; // no git at all — nothing this hook can usefully say
   }
 }
 
@@ -99,7 +104,8 @@ async function main() {
   out += memoryDigest(cwd);
   if (memoryUntracked(cwd)) {
     out +=
-      `[loop-engineering] .loop/memory/ is git-ignored, so a maintenance Delete cannot be recovered. ` +
+      `[loop-engineering] nothing under .loop/memory/ is tracked by git, so a maintenance Delete cannot ` +
+      `be recovered. ` +
       `The contract commits .loop/ by default — drop the \`.loop/\` line from .gitignore before the next ` +
       `/loop-engineering:memory pass. To keep run state out while still tracking the store, git cannot ` +
       `un-ignore a child of an ignored directory, so the parent must be \`.loop/*\` + \`!.loop/memory/\` ` +
