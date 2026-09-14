@@ -88,6 +88,10 @@ const USAGE = `loop-record — write one iteration into .loop/state.json
   --status <s>                     state.json status to write (default: running)
   --dir <path>                     loop directory (default: .loop)
   --dry-run                        run every check, write nothing
+
+  --review-gate "<summary>"        record that the review gate ran, and what it
+                                   found; writes state.review_gate, appends no
+                                   history entry
 `;
 
 // ----------------------------------------------------------------------- state
@@ -167,6 +171,34 @@ function main(argv) {
   const dir = resolve(String(args.dir ?? '.loop'));
   const statePath = join(dir, 'state.json');
   const problems = [];
+
+  // The review gate ran on 51 of 58 runs in a real archive and left a trace on
+  // four: nothing wrote the field, so the most expensive gate in the loop was
+  // the least visible afterwards. It is not an iteration, so it appends no
+  // history — the fixes it produces are recorded as `kind: review-fix`.
+  if (args['review-gate'] !== undefined) {
+    const summary = String(args['review-gate']).trim();
+    if (!summary || summary === 'true') {
+      process.stderr.write(
+        'loop-record: --review-gate needs a summary — the dimensions that ran, findings raised, ' +
+        'confirmed after refutation, and fixed. "Clean" is a result; silence is not.\n'
+      );
+      return 1;
+    }
+    let state;
+    try { state = loadState(statePath); } catch (e) {
+      process.stderr.write(`loop-record: ${e.message}\n`); return 1;
+    }
+    state.review_gate = { recorded: new Date().toISOString(), summary };
+    state.updated = state.review_gate.recorded;
+    if (args.dryRun) {
+      process.stdout.write(`loop-record: would record review_gate — ${summary}\n`);
+      return 0;
+    }
+    writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
+    process.stdout.write(`recorded review_gate — ${summary}\n`);
+    return 0;
+  }
 
   const verdict = String(args.verdict ?? '').toLowerCase();
   if (!VERDICTS.includes(verdict)) {

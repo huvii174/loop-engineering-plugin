@@ -312,7 +312,13 @@ function checkDuplicates(memDir, findings) {
         const m = /^(L-\d+)\s*(\[[^\]]+\]\[[^\]]+\])?([\s\S]*)$/.exec(chunk);
         if (!m) continue;
         const [, id, tag, body] = m;
-        for (const ref of body.match(/[\w./-]+\.\w+:\d+/g) ?? []) {
+        for (const raw of new Set(body.match(/[\w./-]+\.\w+:\d+/g) ?? [])) {
+          // Compare basename:line, not the raw string. Two entries citing the
+          // same defect write it differently — `tests/conftest.py:362` and
+          // `conftest.py:362` are one anchor — and comparing raw strings made
+          // this check find nothing, ever, on a store that genuinely had a pair.
+          // Same normalisation the breaker's errorSignature already applies.
+          const ref = raw.replace(/^(?:[\w.~-]*\/)+/, '');
           if (!byAnchor.has(ref)) byAnchor.set(ref, []);
           byAnchor.get(ref).push({ id, tag: tag ?? '' });
         }
@@ -320,7 +326,9 @@ function checkDuplicates(memDir, findings) {
     }
   }
   const clusters = [];
-  for (const [ref, members] of byAnchor) {
+  for (const [ref, all] of byAnchor) {
+    const seen = new Set();
+    const members = all.filter((m) => !seen.has(m.id) && seen.add(m.id));
     const tags = new Set(members.map((x) => x.tag));
     if (members.length > 1 && tags.size > 1) {
       clusters.push(`${ref} — ${members.map((x) => `${x.id}${x.tag}`).join(' / ')}`);

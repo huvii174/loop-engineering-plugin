@@ -114,6 +114,29 @@ in prose and asked a script to count it; only one of those two contracts held.
   are injected as `S:<slug>` and now reach `.recall-log`, check 7 and the
   hit-rate pass; they logged as `id: null` before, so the deepest tier spent
   budget and left nothing to maintain it by.
+- **The review gate leaves a trace.** It ran on 51 of 58 runs with iteration
+  records and set `state.review_gate` on four, because nothing wrote the field —
+  the most expensive step in the loop was the least visible afterwards, and no
+  later reader could tell a thorough gate from a skipped one.
+  `loop-record.mjs --review-gate "<summary>"` records it without appending an
+  iteration, and refuses an empty summary: a clean gate records that it was
+  clean, and silence is not a result.
+- **Hygiene finishes what an earlier sweep started.** Removing a dropping tree's
+  FILES left the tree: `.loop/memory/` really held an empty `.claude/.cc-writes/`,
+  and an empty dot-directory under the store is the same lie the files were — it
+  makes the store look written to. Non-dot empty directories are left alone. A
+  stale hand-written `RESUME-*.md` is named, never deleted, and only once
+  `parallel.json` exists to make it redundant.
+- **The duplicate check compares anchors, not strings.** It had never fired on
+  any store, because `tests/conftest.py:362` and `conftest.py:362` are one
+  defect written two ways and it compared the raw text. Normalised to
+  basename:line — the same collapse the breaker's `errorSignature` already
+  applies — it immediately found the pair a manual audit had named.
+- **One guidance contradiction, closed.** `loop-engine` says `.loop/` is
+  committed by default; the new git warning told the reader to ignore it and
+  un-ignore `memory/`. The contract now states the part that was missing —
+  `memory/` must be tracked either way, because Delete is justified by "git
+  history is the archive" — and the warning agrees with it.
 - **Two bugs in the lint itself, both found by running it on a real store.**
   `mapBodies` terminated its match with `(?=^###|\Z)` — JavaScript has no `\Z`,
   so it means "or a literal Z", and a cluster map that is the LAST heading in its

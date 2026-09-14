@@ -169,6 +169,25 @@ const CASES = [
     expect: { check: 'schema', level: 'block', message: 'more than one entry' },
   },
   {
+    // The same defect written two ways is one anchor. Comparing the raw strings
+    // made this check find nothing, ever, on a store that had a real pair.
+    name: 'two entries citing one anchor under different path spellings are found',
+    files: {
+      'learnings/_index.md': '# Learnings index\n- L-001 [env][pytest] one\n- L-002 [gotcha][pytest] two\n',
+      'learnings/env.md': '### L-001 [env][pytest] one\n\nsee `tests/conftest.py:362`\n',
+      'learnings/gotchas.md': '### L-002 [gotcha][pytest] two\n\nsee `conftest.py:362`\n',
+    },
+    expect: { check: 'dup', level: 'warn', message: 'different' },
+  },
+  {
+    name: 'one entry citing the same anchor twice is not a duplicate pair',
+    files: {
+      'learnings/_index.md': '# Learnings index\n- L-001 [env][pytest] one\n',
+      'learnings/env.md': '### L-001 [env][pytest] one\n\n`tests/conftest.py:362` and again `conftest.py:362`\n',
+    },
+    absent: ['dup'],
+  },
+  {
     name: 'a done rollup with no promotion block warns — epic close is the gate event',
     files: { 'epics/e.md': '---\nepic: E\nstatus: done\n---\n\n| # | Sub-goal |\n|---|---|\n| 1 | x (D-e-001) |\n' },
     expect: { check: 'cite', level: 'warn', message: 'Promotion candidates' },

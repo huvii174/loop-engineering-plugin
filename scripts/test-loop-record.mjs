@@ -148,6 +148,22 @@ const CASES = [
     },
   },
   {
+    // The gate ran on 51 of 58 runs in a real archive and left a trace on four.
+    name: '--review-gate records the gate without appending an iteration',
+    args: ['--review-gate', '5 dimensions; 4 raised, 1 refuted, 3 fixed'],
+    code: 0,
+    check: ({ loop }) => {
+      const s = JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8'));
+      return s.review_gate?.summary.includes('3 fixed') && s.history.length === 0 && s.iteration === 0;
+    },
+  },
+  {
+    name: '--review-gate with no summary is refused — "clean" is a result, silence is not',
+    args: ['--review-gate'],
+    code: 1,
+    stderr: 'needs a summary',
+  },
+  {
     name: 'record_contract_since is stamped once and never moved',
     fixture: { state: { status: 'running', iteration: 3, max_iterations: 12, record_contract_since: 2,
       history: [{ n: 1, verdict: 'pass' }, { n: 2, verdict: 'pass' }, { n: 3, verdict: 'fail' }] },

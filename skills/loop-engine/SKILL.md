@@ -44,6 +44,14 @@ committed so loop history travels with the repo. `.recall-log` is the exception
 worth ignoring on its own: it is per-session churn, and the durable record of
 what memory changed is the `Recall:` line in the iteration record.
 
+**`memory/` is the half that must be tracked either way**, because the
+maintenance contract permits Delete on the strength of "git history is the
+archive" — a sentence that is only true of a tracked file. When a project does
+ignore run state, git cannot un-ignore a child of an ignored directory, so the
+pattern is `.loop/*` + `!.loop/memory/` + `.loop/memory/scratch/`, never
+`.loop/`. `loop-reminder` says so at session start when it finds the store
+ignored.
+
 ## Parallel slices — `.loop/parallel.json`
 
 One `.loop/` tracks one active goal, so parallel sub-goals run in separate git

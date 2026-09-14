@@ -140,6 +140,19 @@ away.
 
 ## Step 6 — Then, and only then, `done`
 
+Record that the gate ran before anything else in this step:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-record.mjs" \
+  --review-gate "<dimensions run; findings raised; refuted; confirmed; fixed>"
+```
+
+The gate ran on 51 of 58 runs in a real archive and left a machine-readable
+trace on four — the most expensive step in the loop was the least visible
+afterwards, so no later reader could tell a thorough gate from a skipped one. A
+clean gate records that it was clean; silence is not a result.
+
+
 Gate clears (no unrefuted blocker/major) → write `status: "done"` and proceed to
 memory compounding. Findings worth keeping (a real gotcha, a pattern, a dead
 hypothesis from a refuted fix) go into scratch for distillation; the review

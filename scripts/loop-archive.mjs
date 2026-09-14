@@ -30,7 +30,7 @@
  */
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 /** What a finished run leaves behind at the top of `.loop/`. */
 const RUN_ITEMS = ['goal.md', 'design.md', 'prompt.md', 'state.json', 'iterations'];
@@ -350,7 +350,48 @@ export function planHygiene(dir) {
       for (const n of strays) suggestions.push(`git mv ${join(loose, n)} ${join(owned, n)}`);
     }
   }
+  // Sweeping the FILES out of a dropping tree leaves the tree. `.loop/memory/`
+  // really held an empty `.claude/.cc-writes/` after an earlier sweep, and an
+  // empty dot-directory under the store is the same lie the files were: it makes
+  // the store look like something wrote to it.
+  for (const d of emptyDotDirs(dir, doomed)) {
+    actions.push({ verb: 'delete', from: d, why: 'an empty dot-directory left by an earlier sweep' });
+  }
+
+  // A hand-written resume file is someone's evidence, so it is never deleted —
+  // only named, and only once `parallel.json` has made it redundant.
+  for (const n of readdirSync(dir).filter((f) => /^RESUME-.*\.md$/.test(f))) {
+    if (existsSync(join(dir, 'parallel.json'))) {
+      suggestions.push(
+        `${join(dir, n)} predates .loop/parallel.json, which now records the slices it was written to ` +
+        `carry. Fold anything still live into the run's record, then remove it by hand.`
+      );
+    }
+  }
+
   return { kind: 'hygiene', actions, refusals: [], notes, suggestions };
+}
+
+/** Dot-directories under `dir` that hold nothing but other empty dot-directories. */
+export function emptyDotDirs(dir, doomed = new Set()) {
+  const hits = [];
+  const visit = (d) => {
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return false; }
+    let live = false;
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = join(d, e.name);
+      if (doomed.has(p)) continue;              // already being removed this pass
+      if (e.isDirectory()) { if (visit(p)) live = true; }
+      else live = true;
+    }
+    // Report only dot-directories; a real empty directory may be a scaffold
+    // someone meant to leave.
+    if (!live && d !== dir && basename(d).startsWith('.')) { hits.push(d); return false; }
+    return live;
+  };
+  visit(dir);
+  return hits;
 }
 
 // ----------------------------------------------------------------- prune

@@ -100,9 +100,10 @@ async function main() {
   if (memoryUntracked(cwd)) {
     out +=
       `[loop-engineering] .loop/memory/ is git-ignored, so a maintenance Delete cannot be recovered. ` +
-      `Track it before the next /loop-engineering:memory pass — replace \`.loop/\` in .gitignore with ` +
-      `\`.loop/*\` + \`!.loop/memory/\` + \`.loop/memory/scratch/\` (git cannot un-ignore a child of an ` +
-      `ignored directory).\n`;
+      `The contract commits .loop/ by default — drop the \`.loop/\` line from .gitignore before the next ` +
+      `/loop-engineering:memory pass. To keep run state out while still tracking the store, git cannot ` +
+      `un-ignore a child of an ignored directory, so the parent must be \`.loop/*\` + \`!.loop/memory/\` ` +
+      `+ \`.loop/memory/scratch/\`.\n`;
   }
 
   if (out) process.stdout.write(out);

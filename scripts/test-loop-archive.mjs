@@ -349,6 +349,34 @@ if (!existsSync(EVD)) {
   check('evd: prune wrote nothing without --yes', existsSync(join(dir, 'archive', 'run-2026-08-21-692i1-oracle')));
 }
 
+// -------------------------------- hygiene: what an earlier sweep leaves behind
+{
+  const dir = loopDir();
+  mkdirSync(join(dir, 'memory', '.claude', '.cc-writes'), { recursive: true });
+  mkdirSync(join(dir, 'memory', 'learnings'), { recursive: true });
+  writeFileSync(join(dir, 'memory', 'learnings', '_index.md'), '# index\n');
+  mkdirSync(join(dir, 'scaffold'), { recursive: true });   // a real empty dir, left alone
+  writeFileSync(join(dir, 'RESUME-parallel-run.md'), '# resume\n');
+
+  let r = archive('hygiene', '--dir', dir);
+  check('hygiene: removes an empty dot-directory an earlier sweep left',
+    r.code === 0 && !existsSync(join(dir, 'memory', '.claude')), `code=${r.code} err=${r.err}`);
+  check('hygiene: leaves a non-dot empty directory alone', existsSync(join(dir, 'scaffold')));
+  check('hygiene: leaves the store it was sweeping next to intact',
+    existsSync(join(dir, 'memory', 'learnings', '_index.md')));
+  check('hygiene: says nothing about RESUME while no parallel.json exists',
+    !r.out.includes('RESUME'), r.out);
+
+  // Once parallel.json records the slices, the hand-written file is redundant —
+  // and it is still someone's evidence, so it is named, never deleted.
+  writeFileSync(join(dir, 'parallel.json'), '{}');
+  r = archive('hygiene', '--dir', dir);
+  check('hygiene: names a stale RESUME file once parallel.json exists',
+    r.code === 0 && r.out.includes('RESUME-parallel-run.md'), r.out);
+  check('hygiene: never deletes the RESUME file itself',
+    existsSync(join(dir, 'RESUME-parallel-run.md')));
+}
+
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });
 console.log(failed === 0 ? '\nall archive checks passed' : `\n${failed} archive check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);
