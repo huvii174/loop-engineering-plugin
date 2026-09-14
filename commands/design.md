@@ -132,6 +132,11 @@ the artifacts below. Two extra rules first:
       Must not: <the boundary that must hold WHILE meeting it — e.g. "no test
       deleted or weakened, coverage not lowered". A done-criterion without a
       boundary is a license to cheat>
+      Must not: <the `must_not:` of every recalled entry you marked `applied`
+      that bears on this criterion, copied verbatim and tagged `(S:<slug>)`.
+      This is what makes a recall change an outcome: an entry marked `applied`
+      and left as advice was recalled twice in one real epic, which still
+      produced its 13th and 14th instances of exactly what it warns about>
 - [ ] ...
 
 ## Global boundaries

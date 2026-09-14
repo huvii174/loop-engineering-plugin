@@ -51,6 +51,72 @@ in prose and asked a script to count it; only one of those two contracts held.
   numbered assumptions travel in `assumptions` — the breaker refuses to start a
   sub-95 run that carries neither. A legacy string warns rather than stops: the
   run it describes is already history.
+- **Recall becomes a constraint, not context.** The store's own record is what
+  forced this: `solutions/false-green-evidence.md` was recalled and marked
+  `applied` on two separate iterations of one epic, with what it changed written
+  out — and that epic produced its thirteenth and fourteenth false-green
+  instances anyway. Another entry was `applied` three times in a single run as
+  *recovery*, after the criteria it warns about were already written wrong.
+  Retrieval was never the failing half. A `solutions/` entry now carries one
+  `must_not:` — a checkable prohibition phrased as a `goal.md` `Must not:` line —
+  and the design gate copies it into the criterion it bears on, tagged with the
+  entry's ID. From there the verifier's existing boundary check enforces it
+  without knowing memory exists.
+- **`loop-verifier` gains check 8: the evidence must be able to go red.** For
+  each test cited as evidence, delete or invert the one assertion carrying the
+  criterion's claim, in a temp copy, and run it again. Still green means the
+  APPROVE would have been indistinguishable from a real one — returned as
+  `ESCALATE_HUMAN — evidence cannot fail`, not REJECT, because the defect is in
+  the proof and the code may be correct. External anchors and deterministic
+  self-checks are exempt; agent-authored tests are not, which is the whole
+  point. 30 of 66 recorded solution entries describe exactly this defect.
+- **Every backlog opens with row 0** (`D-841-070`): one item whose only
+  deliverable is a row written by the **production path**, its first criterion
+  naming a table, a column and a value. No later item closes on unit evidence
+  until it is done, `epic-planner` refuses a backlog without it, and
+  `plan-critic` gained one mandatory attack — *which criterion could close green
+  while the production path never ran?* The epic that produced the rule shipped,
+  reviewed, verified and merged four items over a path that raised
+  `AttributeError` on its first line into a belt-and-braces `except`. The
+  `Cond.` column returns alongside it: name the cheap probe that can make an
+  expensive item unnecessary.
+- **Epic close must propose its promotions.** A `status: done` rollup carries a
+  `## Promotion candidates` block — IDs whose scope exceeds the epic, or
+  `none — <reason>` — and `memory-lint` flags one that has neither. Across 77
+  archived runs of a real store, the host tier was never proposed once: every
+  other tier transition fires on an event, and this one waited on a judgement
+  nobody was asked to make. The gate guarded the approval; nothing guarded the
+  proposal.
+- **Recall spends its budget on what discriminates.** A keyword matching over
+  15% of index lines is dropped before scoring, so the store computes its own
+  stopwords; at the score threshold an entry's `[area]` must appear in the
+  prompt to earn a body slot; and an ID the last ten records dismissed three
+  times keeps its listing but loses its slot. One "Not fixed (minor)" note about
+  a window query took 34 of 127 injections — 27% of every budget — arriving
+  inlined on runs about generators and Temporal workers. `solutions/` entries
+  are injected as `S:<slug>` and now reach `.recall-log`, check 7 and the
+  hit-rate pass; they logged as `id: null` before, so the deepest tier spent
+  budget and left nothing to maintain it by.
+- **`scripts/memory-lint.mjs` checks reachability, not anchors.** `reach`: every
+  body has an index line or is named in a cluster map. A real maintenance pass
+  folded 152 index lines, verified all 358 `### L-NNN` anchors survived, and
+  recorded "zero IDs lost" — the anchors did survive, and 126 of 509 bodies
+  ended reachable by nothing, 115 of them cited nowhere in the store at all.
+  Also `budget` (naming the commentary share when moving it alone would clear
+  the overage) and `schema` (typed frontmatter, closed `root_cause` set).
+  `memory-gate` blocks a terminal stop on any blocking finding.
+- **The memory store is tracked in git.** The contract permits **Delete** and
+  justifies it with "git history is the archive"; `git ls-files .loop/memory`
+  returned 0 on a store of 509 learnings, 547 decisions and 66 solution entries,
+  so every Delete was unrecoverable and nothing said so. Git cannot un-ignore a
+  child of an ignored directory, so the pattern is `.loop/*` + `!.loop/memory/`
+  + `.loop/memory/scratch/`; `loop-reminder` says so at session start when it
+  finds the store ignored.
+- **`loop-archive run` refuses a history with missing records.** 42 of 308
+  iteration records in a real archive did not exist while `state.json` still
+  counted them, and 16 runs had none at all. `--allow-gaps` archives anyway and
+  writes `missing_iteration_records` into the archived state, so the loss is
+  data rather than an absence a later reader has to notice.
 
 ## 0.15.0 — 2026-09-01
 

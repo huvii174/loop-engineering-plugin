@@ -39,8 +39,13 @@ Attack, in order of iteration-burn:
    Check. (`solutions/*.md` and `## What didn't work` in memory are your best
    ammunition — a dead hypothesis the design just resurrected is an instant
    finding.)
-2. **The criteria.** Can a lazy implementation satisfy a `Done when:` line
-   without achieving the goal (proxy gaming)? Is any criterion subjective wearing
+2. **The criteria, and the one attack that is mandatory on every design:**
+   *which criterion could close green while the production path never ran?*
+   A structural check over emitted text, a suite that mocks the boundary it
+   claims to prove, an assertion that survives deleting its own subject — each
+   is a finding, and this class accounts for 30 of the 66 solution entries this
+   plugin's own corpus records. Then: can a lazy implementation satisfy a
+   `Done when:` line without achieving the goal (proxy gaming)? Is any criterion subjective wearing
    a measurable costume? Would the verifier actually be able to run it?
 3. **The decomposition.** Hidden coupling between work items that will force
    rework; items too big to verify in one iteration; an item whose failure

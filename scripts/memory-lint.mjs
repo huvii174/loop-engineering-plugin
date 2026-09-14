@@ -200,6 +200,7 @@ function checkSchema(memDir, findings) {
   if (!existsSync(dir)) return;
   const missing = [];
   const badCause = [];
+  const advisory = [];
   for (const f of mdFiles(dir)) {
     const text = read(f);
     if (!text) continue;
@@ -210,12 +211,28 @@ function checkSchema(memDir, findings) {
     if (absent.length) missing.push(`${name} (${absent.join(', ')})`);
     const cause = /^root_cause:\s*(.+)$/m.exec(head);
     if (cause && !ROOT_CAUSES.has(cause[1].trim())) badCause.push(`${name}: ${cause[1].trim().slice(0, 48)}`);
+    // A `type: bug` entry without a `must_not:` is advice. The corpus records
+    // what advice achieves: one entry was recalled and marked `applied` twice
+    // in an epic that went on to produce its 13th and 14th instances of the
+    // thing it warns about. Only a line the verifier already checks changes an
+    // outcome, and `Must not:` is that line.
+    if (/^type:\s*bug\s*$/m.test(head) && !/^must_not:\s*\S/m.test(head)) advisory.push(name);
   }
   if (missing.length) {
     findings.push({
       check: 'schema', level: 'block', root: 'solutions', count: missing.length,
       message: `${missing.length} solution entr${missing.length === 1 ? 'y is' : 'ies are'} missing typed frontmatter keys.`,
       ids: missing.slice(0, 8),
+    });
+  }
+  if (advisory.length) {
+    findings.push({
+      check: 'schema', level: 'warn', root: 'solutions', count: advisory.length,
+      message:
+        `${advisory.length} \`type: bug\` entr${advisory.length === 1 ? 'y has' : 'ies have'} no \`must_not:\` — ` +
+        `they can be recalled and applied and still change nothing. Write one checkable prohibition each, ` +
+        `phrased as a goal.md \`Must not:\` line, and the design gate will carry it into the criteria.`,
+      ids: advisory.slice(0, 8),
     });
   }
   if (badCause.length) {

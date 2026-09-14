@@ -37,20 +37,24 @@ verified independently.
    condition (a test, a command, a metric threshold). If you cannot write one,
    the slice is wrong — re-slice until you can. This seed is refined, not
    invented, by the later design gate.
-3. **Sized for one loop run**: roughly ≤ 12 iterations of small increments. Too
+3. **Row 0 writes a real row.** Every backlog opens with one sub-goal whose only
+   deliverable is a row produced by the **production path**, its seed
+   `Done when:` naming a table, a column and a value — never a test that passes.
+   Everything else depends on it. A backlog without row 0 is not finished output.
+4. **Sized for one loop run**: roughly ≤ 12 iterations of small increments. Too
    big → split; trivially small → merge with its neighbor.
-4. **Minimize dependencies**, then make the rest explicit (`Depends on` column).
+5. **Minimize dependencies**, then make the rest explicit (`Depends on` column).
    Prefer an ordering where the riskiest assumption is tested by sub-goal 1 or
    2 — fail fast at the epic level.
-5. **Map every sub-goal to at least one epic acceptance criterion.** A sub-goal
+6. **Map every sub-goal to at least one epic acceptance criterion.** A sub-goal
    that advances no epic criterion is scope creep — flag it instead of
    including it.
-6. **5–9 sub-goals is the healthy range.** More means the epic should be split
+7. **5–9 sub-goals is the healthy range.** More means the epic should be split
    into two epics; say so.
-7. **Every sub-goal gets a `Must not` seed** — the boundary that must hold while
+8. **Every sub-goal gets a `Must not` seed** — the boundary that must hold while
    its `Done when:` is being met (what must not be deleted, weakened, changed).
    A done-criterion without a boundary is a license to cheat.
-8. **Every sub-goal gets a cost `Tier`** — `trivial | small | medium | large` —
+9. **Every sub-goal gets a cost `Tier`** — `trivial | small | medium | large` —
    which routes how much process it pays downstream (design-gate depth,
    tenth-man, review dimensions; table in the loop-engine skill). A config
    change must not pay for a schema migration. When torn between two tiers,

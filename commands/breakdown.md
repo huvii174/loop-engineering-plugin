@@ -118,13 +118,32 @@ writing anything.
 **`.loop/epics/<epic-slug>/backlog.md`**
 ```markdown
 # Backlog — <epic name>
-| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Tier | Status |
-|---|----------|------------------|-----------------|------------|------|--------|
-| 1 | <slice>  | <measurable>     | <boundary>      | —          | small | pending |
-| 2 | <slice>  | <measurable>     | <boundary>      | 1          | medium | pending |
+| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Tier | Cond. | Status |
+|---|----------|------------------|-----------------|------------|------|-------|--------|
+| 0 | <the production path writes one real row> | <table, column, value> | <boundary> | — | small | — | pending |
+| 1 | <slice>  | <measurable>     | <boundary>      | 0          | small | — | pending |
+| 2 | <slice>  | <measurable>     | <boundary>      | 1          | medium | <probe that may make this unnecessary> | pending |
 ```
 Status enum: `pending | designed | running | done | stuck`. Tier routes process
 depth downstream (loop-engine skill has the table); the design gate inherits it.
+
+**Row 0 is not optional** (`D-841-070`). Every backlog opens with one item whose
+only deliverable is a row **written by the real production path**, and its first
+criterion names a table, a column and a value — not a test that passes. No later
+item closes on unit evidence until row 0 is `done`.
+
+The epic that produced this rule shipped, reviewed, verified and merged four
+items over a path that raised `AttributeError` on its first line and had it
+swallowed by a belt-and-braces `except`. Thirteen suites were green over code
+nothing had executed. Its retro: *"A criterion satisfiable without the production
+path running is not a criterion, it is a restatement of the implementation"* —
+and the live harness that found it was added late as prep, costing five days
+where row 0 would have cost one.
+
+The **`Cond.`** column is the other half: name the cheap probe that could make an
+expensive item unnecessary, and the item is only built if the probe says so. One
+real epic retired a whole item that way — *"make the expensive item conditional
+on a cheap observation"* is the shape to copy.
 
 Also persist the sign-off into recallable memory (create
 `.loop/memory/decisions/<epic-slug>/` and its `_index.md` if absent): one entry

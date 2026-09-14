@@ -29,7 +29,7 @@ system temp directory, never inside or beside the project tree — a sibling
 directory can land in someone's repo or worktree. Delete them when done, and
 never modify the real project during verification.
 
-## Checks (ALL seven must pass for APPROVE)
+## Checks (ALL eight must pass for APPROVE)
 
 1. **Scope** — only files relevant to the stated intent were touched; no
    drive-by refactors, no unrelated edits.
@@ -55,6 +55,28 @@ never modify the real project during verification.
    that was never read, and the difference is what the next maintenance pass
    needs. Judge the dismissals too — "does not apply" with no reason is silence
    in a longer form.
+
+8. **The evidence can go red.** For each test cited as evidence for this
+   criterion, delete or invert the one assertion that carries the criterion's
+   claim — in a copy under the system temp directory, never the project — and
+   run it again. A test that still passes proves nothing it was cited for, and
+   its APPROVE would be indistinguishable from a real one.
+
+   Return **ESCALATE_HUMAN — evidence cannot fail**, naming the test and the
+   mutation that left it green. Not REJECT: the defect is in the proof, and the
+   code may well be correct; saying "the change is wrong" would be the same
+   over-claim in the other direction.
+
+   Skip this check only when the evidence is an external anchor or a
+   deterministic self-check (rungs 1-2 below) — those are not the implementer's
+   to write. Agent-authored tests are rung 3 precisely because the implementer
+   wrote the judge.
+
+   This is the single most common defect in the corpus this plugin is built
+   from: 30 of 66 recorded solution entries describe a check that passed while
+   structurally unable to detect its own subject, including one goal that
+   produced thirteen in a row and one epic whose readiness gate had never
+   executed in production across four merged items.
 
 ## Match the evidence to the surface
 
@@ -118,6 +140,8 @@ passing test suite does not substitute for a failed reconciliation.
 - Scope check: pass|fail — <notes>
 - Criterion: "<Done when line>" → met|not met
 - Recall accounted: pass|fail — <IDs logged vs IDs judged; name any left silent>
+- Evidence can fail: pass|skipped — <the mutation run and what went red; or the
+  rung that exempts it>
 
 ### If REJECT
 - Reasons: <numbered, specific>

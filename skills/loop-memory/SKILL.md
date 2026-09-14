@@ -161,6 +161,8 @@ severity: low | medium | high
 root_cause: wrong-api | missing-config | async-timing | scope | test-isolation | data-shape | dependency | logic | unknown
 status: current | stale
 stale_reason: <required when status: stale>
+must_not: <one checkable prohibition, written as a goal.md `Must not:` line>
+red_probe: <optional — the one-line mutation or command that makes it red>
 ---
 
 # <one-line problem statement>
@@ -177,6 +179,24 @@ stale_reason: <required when status: stale>
 
 For `type: knowledge` (a pattern or decision rather than a defect), replace
 Symptoms/What-didn't-work with **Context** and **Guidance**.
+
+**`must_not` is what turns an entry from advice into a constraint**, and it is
+required for `type: bug`. In a real epic, `solutions/false-green-evidence.md` was
+recalled and marked `applied` on two separate iterations, with what it changed
+written out — and that same epic produced its thirteenth and fourteenth
+false-green instances anyway. Another entry was `applied` three times in one run
+as *recovery*, after the criteria it warns about had already been written wrong.
+Recall was not the failing half: the entry was found, read and consciously used.
+A principle raises vigilance; only a line the verifier already checks changes an
+outcome, and `Must not:` is that line. Write it as one, testable as written:
+
+- ✅ `No test cited as evidence may pass with its target assertion deleted`
+- ✅ `No criterion closes on emitted text — the emitted function must be executed`
+- ❌ `Be careful about tests that cannot fail` (nothing to check)
+
+The design gate copies the `must_not` of every entry it marks `applied` into the
+relevant criterion's `Must not:` lines, tagged with the entry's ID. From there
+the verifier's boundary check enforces it without knowing memory exists.
 
 **The slug is a trigger too.** Recall scores a solution on its filename and
 frontmatter, so the slug must carry at least one concrete technical term someone

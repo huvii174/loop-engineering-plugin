@@ -104,6 +104,16 @@ is evidence-backed. `CLAUDE.md` loads into every future session; an unreviewed
 line there is a permanent tax. Never promote a scratch entry directly. If the
 host already has a memory system, merge into it rather than adding a second store.
 
+**At epic close, the proposal is mandatory** — write a `## Promotion candidates`
+block into the epic rollup listing each ID whose scope exceeds this epic with
+one line of why, or the single line `none — <reason>`. `memory-lint` flags a
+`status: done` rollup that has neither.
+
+Every other tier transition fires on an event; this one fired on a judgement
+nobody was asked to make, and across 77 archived runs of a real store it was
+never made once. The gate guards the *approval*; this step is what guards the
+*proposal*.
+
 ## Step 6 — Hit-rate pass (the store maintains itself from its own usage)
 
 Read the `Recall:` lines across this run's `.loop/iterations/*.md` — they are
