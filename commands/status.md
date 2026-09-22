@@ -70,6 +70,14 @@ run resumable after a session dies mid-flight — each slice's own `.loop/state.
 holds its position, and this manifest is the only record of where those live.
 Flag any entry whose worktree path no longer exists.
 
+## 6b. Epic run (only when `.loop/run.json` exists)
+
+One line from that file plus the epic's `backlog.md`: epic, mode
+(hands-off/interactive), items done of total, next item in `order`, and the
+gate's `nudge` count when it is non-zero — a count at the cap (loop-engine
+skill) says the runner has been stopping at one position and the next stop
+halts it.
+
 ## 7. One-paragraph plain summary
 
 Where the loop stands, iterations used vs budget, and the single next action.

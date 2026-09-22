@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.17.0 — 2026-09-22
+
+**The runner is code, for the same reason the breaker is.** `--hands-off`
+promised "this is the last question until something stops" and kept it only in
+prose: nothing on disk knew a run was open, `memory-gate` waved every `running`
+pause through by design, and the loop's own close step told the model to name
+the next item for the user. A short epic fit inside one turn's attention; a long
+one ended at the first natural place to summarise, and the user typed "continue"
+until it closed — the exact cognitive load `run` exists to remove.
+
+- **`.loop/run.json`** — written at go/no-go: epic, `hands_off`, the topo
+  `order`, `human_gates`, an optional item `budget`. Schema in the loop-engine
+  skill. The runner deletes it at epic close and on user cancel; a resumed
+  `/loop-engineering:run` reads it, skips pre-flight, and continues from the
+  first item not `done`.
+- **`hooks/run-gate.mjs`** (Stop) — while `run.json` names an item the backlog
+  does not show as `done`, blocks the stop and names the next action: the design
+  gate of the next item, the loop of a `designed` one, or the next iteration of
+  a `running` one. Silent on every legitimate stop — a `stuck` row, a loop at
+  `stuck`/`stopped-*`, a human gate next, a spent budget, the file gone.
+  Bounded like every other stop here: three blocks at one position with no
+  progress and it lets go, saying the runner is halted. `stop_hook_active` is
+  deliberately not honoured; the counter is the cap.
+- **`loop-reminder`** announces an open run at session start with the resume
+  command, so a fresh session resumes the runner rather than only the loop.
+- **`memory-gate`** keeps its once-only block under a run through its own
+  marker (`.loop/.memory-gate-key`, keyed on the terminal state) instead of the
+  shared `stop_hook_active` flag, which run-gate keeps true for the whole
+  hands-off stretch — otherwise the compounding gate would have gone quiet for
+  exactly the runs it exists for. An open run also skips the ad-hoc nudge.
+- `loop.md`'s close step hands the next item to the runner when a run is open
+  instead of naming it for the user; `status` gets a run line.
+- Hook test suite: +37 checks — run-gate standing, every legitimate stop, the
+  nudge cap and its reset, the reminder line, and one per finding of the
+  pre-ship review (symlinked plugin root, unwritable counter, another epic's
+  leftover `state.json`, decorated status cells, later and fenced tables,
+  string ids, memory-gate under a run).
+
 ## 0.16.1 — 2026-09-14
 
 **The git-recoverability warning asked from the wrong directory.** 0.16.0 checked

@@ -29,7 +29,9 @@ yet" — but only inside explicit, bounded stop conditions.
     <run_id>/        # finished goal runs (archived by the design gate)
     epics/<slug>/    # closed epic instances (archived when the retro is written)
   .recall-log        # IDs auto-recall injected — what the `Recall:` line answers to
+  .memory-gate-key   # (runs only) the terminal state memory-gate already blocked once
   parallel.json      # worktree slices, when a run fans out (absent otherwise)
+  run.json           # (epics only) the open epic run — written at go/no-go, gone at close
   memory/            # index + body; see loop-memory skill
     learnings/_index.md    # triggers — the half read by default
     learnings/<type>.md    # bodies, uncapped, reached by `### L-NNN` anchor
@@ -76,6 +78,51 @@ than a reconstruction. Two rules travel with a fan-out: **name every subagent
 with its slice prefix and never reuse a name** (a fresh name is a fresh context,
 which is the point of a critic or verifier), and never address an agent across
 prefixes. Delete a slice's entry when its worktree merges.
+
+## Epic run — `.loop/run.json`
+
+`/loop-engineering:run` writes this at go/no-go and it is the only record that a
+run is in flight. The **run-gate** Stop hook reads it with the epic's
+`backlog.md` and holds the session open while an item in `order` is not `done`;
+`loop-reminder` reads the same standing at session start so a fresh session
+resumes the runner, not just the loop inside it. A run kept only in prose ended
+at the first natural place to summarise.
+
+```json
+{
+  "epic": "agent-usage-statusline",
+  "hands_off": true,
+  "started": "2026-09-22",
+  "order": [1, 4, 2, 3, 5, 6, 7],
+  "human_gates": [6],
+  "budget": null,
+  "done_at_start": 0,
+  "nudge": { "key": "2:running@3", "count": 1 }
+}
+```
+
+- `order` — the topo sort the pre-flight produced; the gate names the first
+  item in it whose backlog `Status` cell does not lead with `done`. Absent, table
+  order. The leading word of the Status cell is the contract (`done` · `stuck` ·
+  `pending` · `designed` · `in-progress`); what follows is commentary.
+- `human_gates` — item ids the runner must stop before; the gate goes silent
+  when the next item is one.
+- `budget` / `done_at_start` — a per-run item cap ("run 3 items then report"):
+  silent once `done − done_at_start ≥ budget`. `null` means all pending items.
+- `nudge` — the gate's own counter, never the runner's to write: same position
+  (item + loop status + iteration) blocked **three** times with no progress →
+  the gate lets the stop through and says the runner is halted. Progress resets
+  it; a counter the gate cannot write counts as spent.
+
+The gate is silent on every legitimate stop — the one list, which `runStanding`
+in `hooks/lib.mjs` implements: a `stuck` row, this epic's loop at `stuck` /
+`stopped-*` (a `state.json` naming another epic is a leftover and is ignored), a
+human gate next, a spent budget, every item `done`, or the file gone. **The
+runner deletes `run.json` at epic close and on the user's cancel** — a file left
+behind after an archive is harmless (no backlog, no standing) but untidy. The
+memory-gate keeps its once-only block per terminal state under a run via
+`.loop/.memory-gate-key`, since run-gate keeps `stop_hook_active` true for the
+whole hands-off stretch.
 
 **`archive/` is frozen.** A run or epic moved there is a historical snapshot:
 never edit it, never update it to match today's code, and never cite it as

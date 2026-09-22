@@ -16,6 +16,11 @@ seven times; it does not replace any check.
 1. Resolve the epic: the slug argument, else `.loop/active-epic`. Its instance
    `.loop/epics/<slug>/` must exist with pending items; otherwise point at
    `/loop-engineering:breakdown`.
+   **Resuming:** when `.loop/run.json` already names this epic, the run is in
+   flight — its flags stand (a `hands_off` in the file outranks the absence of
+   the argument), pre-flight is done, and execution continues at the first item
+   in `order` whose backlog row is not `done` (an item whose loop is `running`
+   or `designed` picks up where `state.json` says). Read it before anything.
 2. Run the breaker once (`node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-breaker.mjs"`
    against any live state) — both to respect an open loop and to surface the
    `[plugin vX.Y.Z]` version check before a long autonomous stretch.
@@ -44,6 +49,12 @@ asking the user mid-flight. So before executing anything:
 5. Present the execution plan (order, tiers, expected gates per item, any
    human-gated items) and get one final go/no-go. This is the last question
    until something stops.
+6. On go, **write `.loop/run.json`** (schema in the `loop-engineering:loop-engine`
+   skill): epic, `hands_off`, the topo `order`, `human_gates`, and when the
+   user capped the run, `budget` with `done_at_start` (the count of rows already
+   `done` now — the cap counts from here, not from zero). From here the **run-gate** Stop hook holds the session
+   open while an item in `order` is not `done` — the runner's continuity is
+   code, and a stop it did not sanction comes back with the next item named.
 
 ## Execution — one item at a time, in dependency order
 
@@ -61,22 +72,33 @@ For each item in topo order:
    and epic bookkeeping at stop — exactly as if the user had run it by hand.
 3. **Route on outcome:**
    - `done` → announce (one line: item, iterations used, criteria evidence),
-     continue to the next item.
-   - `stuck` → **the runner stops.** Present the stuck diagnosis (competing
-     hypotheses + recommended probe) and wait for the user. Never skip a stuck
-     item to continue the epic — later items may depend on the lie.
+     continue to the next item **in the same turn** — the design gate of item
+     k+1 is the next action, not a summary.
+   - `stuck` → **the runner stops.** The backlog row reads `stuck`, which is
+     what silences the gate. Present the stuck diagnosis (competing hypotheses
+     + recommended probe) and wait for the user. Never skip a stuck item to
+     continue the epic — later items may depend on the lie.
    - Item marked as a human gate in the backlog → stop BEFORE executing it and
-     ask, even under `--hands-off`.
+     ask, even under `--hands-off`. (Listed in `run.json.human_gates`, so the
+     gate stays silent there.)
+   - User cancel → the loop writes `stopped-user`; **delete `.loop/run.json`**
+     so the gate does not hold a run the user ended.
 4. When the last item closes: Epic retro + instance archive + pointer cleanup
-   (the loop's own close semantics), then a final epic report — per-item
-   outcomes, total iterations, epic acceptance-criteria status with evidence.
+   (the loop's own close semantics), **delete `.loop/run.json`**, then a final
+   epic report — per-item outcomes, total iterations, epic acceptance-criteria
+   status with evidence.
 
 ## Runner bounds (explicit, like every other stop in this plugin)
 
 - One `stuck` item stops the whole runner (default). No "skip and continue"
   without the user saying so.
 - A per-run item budget: default = all pending items; the user may cap
-  (`run 3 items then report`).
+  (`run 3 items then report`) — recorded as `run.json.budget`, so the gate
+  releases the session when it is spent.
+- The gate's own bound (the nudge cap in the loop-engine skill): blocked stops
+  at one position with no progress, and it lets the session go, saying the
+  runner is halted. A stop that keeps recurring at the same item is a stop with
+  a cause; find it rather than restart the counter.
 - Every item's own `max_iterations` stands — the runner never raises a budget
   to force an item through.
 

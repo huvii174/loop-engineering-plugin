@@ -4,7 +4,11 @@
  *
  * Two context lines a new session must not start without:
  * 1. Open loop (running or stuck) — so the session resumes instead of redoing.
- * 2. Memory digest — when .loop/memory/ exists, one line naming what the store
+ * 2. Open epic run — `.loop/run.json` with pending items, so the session resumes
+ *    the RUNNER (which continues to the next item itself) rather than only the
+ *    one loop inside it. Same standing the run-gate blocks on; the two never
+ *    disagree because they read the same function.
+ * 3. Memory digest — when .loop/memory/ exists, one line naming what the store
  *    holds, so ad-hoc sessions (no slash command) know memory exists, that
  *    relevant entries auto-inject per prompt (memory-recall hook), and where
  *    ad-hoc findings go (scratch/adhoc.md). This is the cheap layer of the
@@ -16,7 +20,7 @@
 import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { readStdinJson, hooksOff, loadState, readIfExists } from './lib.mjs';
+import { readStdinJson, hooksOff, loadState, readIfExists, runStanding } from './lib.mjs';
 
 const MAX_SLUGS = 8;
 
@@ -107,6 +111,16 @@ async function main() {
         `iteration ${iteration}/${max_iterations}${tier ? `, tier ${tier}` : ''}.${lastLine} ` +
         `Resume with /loop-engineering:loop (state: .loop/state.json — read it before doing loop work; never redo completed iterations).\n`;
     }
+  }
+  const run = runStanding(cwd);
+  if (run) {
+    const flag = run.run.data.hands_off ? ' --hands-off' : '';
+    out +=
+      `[loop-engineering] Open epic run in this project: "${run.run.data.epic}"` +
+      `${run.run.data.hands_off ? ' (hands-off)' : ''}, ${run.done.length} of ${run.order.length} items done, ` +
+      `next is item ${run.next.id}. Resume with /loop-engineering:run ${run.run.data.epic}${flag} — ` +
+      `it reads .loop/run.json, skips pre-flight, and continues from the first pending item; ` +
+      `the run-gate holds the session open until the backlog is done.\n`;
   }
   out += memoryDigest(cwd);
   if (memoryUntracked(cwd)) {

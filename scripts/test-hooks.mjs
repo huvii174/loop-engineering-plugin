@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -556,6 +556,192 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   const r = runHook('loop-reminder.mjs', { cwd: t });
   check('reminder: a store with a repo of its own is silent, though the parent ignores it',
     !r.out.includes('is tracked'), r.out.slice(0, 160));
+}
+
+// ------------------------------------------------------------------ run-gate
+{
+  const BACKLOG = (s1, s2, s3) => `# Backlog — demo
+
+| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Tier | Status |
+|---|----------|------------------|-----------------|------------|------|--------|
+| 1 | Prove the surface | a | b | — | medium | ${s1} |
+| 2 | Render the line | c | d | 1 | small | ${s2} |
+| 3 | Ship the wiring | e | f | 2 | medium | ${s3} |
+`;
+  const runProj = ({ run, backlog, state } = {}) => {
+    const d = proj(state ? { state } : {});
+    mkdirSync(join(d, '.loop', 'epics', 'demo'), { recursive: true });
+    if (backlog !== undefined) writeFileSync(join(d, '.loop', 'epics', 'demo', 'backlog.md'), backlog);
+    if (run !== undefined) writeFileSync(join(d, '.loop', 'run.json'), JSON.stringify(run));
+    return d;
+  };
+  const RUN = { epic: 'demo', hands_off: true, order: [1, 2, 3] };
+  const readRun = (d) => JSON.parse(readFileSync(join(d, '.loop', 'run.json'), 'utf8'));
+
+  let r = runHook('run-gate.mjs', { cwd: proj({}) });
+  check('run-gate: no run.json → allow stop', r.code === 0, `code=${r.code}`);
+
+  // the symptom: item 1 closed, memory compounded, session tries to stop with 2 items left
+  let d = runProj({ run: RUN, backlog: BACKLOG('done', 'designed (pre-compiled)', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: items pending → block stop, names the next item',
+    r.code === 2 && r.err.includes('next is item 2') && r.err.includes('1 of 3 items done'), `code=${r.code} err=${r.err.slice(0, 160)}`);
+  check('run-gate: block names the hands-off mode', r.err.includes('(hands-off)'), r.err.slice(0, 120));
+  check('run-gate: nudge counter written to run.json', readRun(d).nudge?.count === 1 && typeof readRun(d).nudge?.key === 'string', JSON.stringify(readRun(d).nudge));
+
+  // a loop paused mid-iteration under a run is a premature stop too
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'in-progress (iter 3/8)', 'pending'), state: { status: 'running', backlog_item: 2, iteration: 3, max_iterations: 8 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: loop running mid-item → block, says run the breaker',
+    r.code === 2 && r.err.includes('mid-flight') && r.err.includes('3/8'), `code=${r.code} err=${r.err.slice(0, 160)}`);
+
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'designed', 'pending'), state: { status: 'designed', backlog_item: 2 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: next item designed → block, says run its loop',
+    r.code === 2 && r.err.includes('is designed'), `code=${r.code} err=${r.err.slice(0, 160)}`);
+
+  // the legitimate stops
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'stuck (breaker: stagnation)', 'pending'), state: { status: 'stuck' } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: a stuck row → allow stop (runner stops on stuck)', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'in-progress', 'pending'), state: { status: 'stopped-user', backlog_item: 2 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: loop stopped-user → allow stop', r.code === 0, `code=${r.code}`);
+
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'in-progress', 'pending'), state: { status: 'stopped-max-iterations', backlog_item: 2 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: loop stopped-max-iterations → allow stop', r.code === 0, `code=${r.code}`);
+
+  d = runProj({ run: { ...RUN, human_gates: [2] }, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: next item is a human gate → allow stop', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+
+  d = runProj({ run: { ...RUN, budget: 1, done_at_start: 0 }, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: item budget spent → allow stop', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+
+  d = runProj({ run: { ...RUN, budget: 2, done_at_start: 0 }, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: item budget not yet spent → block', r.code === 2, `code=${r.code}`);
+
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'done', 'done'), state: { status: 'done', backlog_item: 3 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: every row done → allow stop', r.code === 0, `code=${r.code}`);
+
+  d = runProj({ run: RUN, state: { status: 'done' } }); // instance archived, stale run.json
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: backlog gone (instance archived) → allow stop', r.code === 0, `code=${r.code}`);
+
+  // order honours the topo sort, not the table order
+  d = runProj({ run: { ...RUN, order: [1, 3, 2] }, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: next item follows run.json order', r.code === 2 && r.err.includes('next is item 3'), r.err.slice(0, 120));
+
+  // the cap: same position nudged MAX times → give up, say so
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  const codes = [];
+  for (let i = 0; i < 4; i++) codes.push(runHook('run-gate.mjs', { cwd: d }));
+  check('run-gate: nudges 1-3 at one position block', codes.slice(0, 3).every((x) => x.code === 2), codes.map((x) => x.code).join(','));
+  check('run-gate: 4th nudge without progress → allow, says halted',
+    codes[3].code === 0 && codes[3].err.includes('halted'), `code=${codes[3].code} err=${codes[3].err.slice(0, 140)}`);
+  check('run-gate: stop_hook_active is not what caps it',
+    runHook('run-gate.mjs', { cwd: runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } }), stop_hook_active: true }).code === 2, '');
+
+  // progress resets the counter: 3 nudges, then the loop moves an iteration
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'in-progress', 'pending'), state: { status: 'running', backlog_item: 2, iteration: 1 } });
+  for (let i = 0; i < 3; i++) runHook('run-gate.mjs', { cwd: d });
+  writeFileSync(join(d, '.loop', 'state.json'), JSON.stringify({ status: 'running', backlog_item: 2, iteration: 2 }));
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: an iteration of progress resets the nudge counter',
+    r.code === 2 && readRun(d).nudge.count === 1, `code=${r.code} nudge=${JSON.stringify(readRun(d).nudge)}`);
+
+  // ---- review findings, each reproduced before it was fixed
+  // a leftover state.json from another epic must not silence this run
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'stuck', epic: 'some-other-epic' } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: stuck state.json of ANOTHER epic is ignored → block', r.code === 2, `code=${r.code}`);
+
+  // a running loop belonging to item 1 is not item 2's loop
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'running', backlog_item: 1, iteration: 5, max_iterations: 8 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: running loop of a different item → block, but says design gate, not mid-flight',
+    r.code === 2 && !r.err.includes('mid-flight') && r.err.includes("item 2's design gate"), r.err.slice(0, 200));
+
+  // status-cell decoration
+  for (const cell of ['done.', '✅ done', '**Done**', '[x] done', 'done!']) {
+    d = runProj({ run: RUN, backlog: BACKLOG(cell, cell, cell) });
+    r = runHook('run-gate.mjs', { cwd: d });
+    check(`run-gate: status cell ${JSON.stringify(cell)} reads done → allow`, r.code === 0, `code=${r.code} err=${r.err.slice(0, 100)}`);
+  }
+
+  // only the first table is the backlog; fenced tables and later tables do not rewrite it
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'done', 'done') + '\n## Acceptance\n\n| # | Criterion | Status |\n|---|---|---|\n| 1 | ships | pending |\n' });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: a later table cannot flip an item back to pending → allow', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+  d = runProj({ run: RUN, backlog: '## Risks\n\n```\n| # | Risk | Status |\n|---|---|---|\n| 1 | x | open |\n```\n\n' + BACKLOG('done', 'done', 'done') });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: a fenced table before the backlog is skipped → allow', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending').replace('| 2 | Render the line | c | d |', '| 2 | Render a \\| b line | c | d |') });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: an escaped pipe in a cell keeps the status column', r.code === 2 && r.err.includes('next is item 2') && r.err.includes('a | b'), r.err.slice(0, 160));
+
+  // ids spelled as strings in run.json are the same ids
+  d = runProj({ run: { ...RUN, human_gates: ['2'] }, backlog: BACKLOG('done', 'pending', 'pending') });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: human_gates as strings still gate → allow', r.code === 0, `code=${r.code} err=${r.err.slice(0, 120)}`);
+  d = runProj({ run: { ...RUN, order: ['1', '3', '2'] }, backlog: BACKLOG('done', 'pending', 'pending') });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: order as strings is honoured', r.code === 2 && r.err.includes('next is item 3'), r.err.slice(0, 120));
+  d = runProj({ run: { ...RUN, order: [9, 8] }, backlog: BACKLOG('done', 'pending', 'pending') });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: order naming no real item falls back to table order', r.code === 2 && r.err.includes('next is item 2'), r.err.slice(0, 120));
+
+  // fail-open: a counter that cannot be written is a spent counter
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending') });
+  chmodSync(join(d, '.loop', 'run.json'), 0o444); chmodSync(join(d, '.loop'), 0o555);
+  r = runHook('run-gate.mjs', { cwd: d });
+  chmodSync(join(d, '.loop'), 0o755); chmodSync(join(d, '.loop', 'run.json'), 0o644);
+  check('run-gate: unwritable run.json → allow (a bound it cannot record is no bound)',
+    r.code === 0 && r.err.includes('halted'), `code=${r.code} err=${r.err.slice(0, 120)}`);
+
+  // the gate runs when invoked through a symlinked plugin root
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending') });
+  const linkRoot = mkdtempSync(join(tmpdir(), 'loop-hook-link-')); cleanup.push(linkRoot);
+  symlinkSync(HOOKS, join(linkRoot, 'hooks'));
+  {
+    const sr = spawnSync('node', [join(linkRoot, 'hooks', 'run-gate.mjs')], { input: JSON.stringify({ cwd: d }), encoding: 'utf8', env: { ...process.env, LOOP_HOOKS_OFF: '' } });
+    check('run-gate: invoked via a symlinked plugin root still blocks', sr.status === 2, `code=${sr.status}`);
+  }
+
+  // memory-gate keeps its once-only block per terminal state under a run, though stop_hook_active stays true
+  d = runProj({ run: RUN, backlog: BACKLOG('pending', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  mkdirSync(join(d, '.loop', 'memory'), { recursive: true });
+  writeFileSync(join(d, '.loop', 'memory', 'learnings.md'), '# Learnings\n');
+  { const old = (Date.now() - 3600_000) / 1000; utimesSync(join(d, '.loop', 'memory', 'learnings.md'), old, old); }
+  r = runHook('memory-gate.mjs', { cwd: d, stop_hook_active: true });
+  check('memory-gate: under an open run, stop_hook_active does not mute it → block once', r.code === 2 && r.err.includes('compounded'), `code=${r.code} err=${r.err.slice(0, 100)}`);
+  r = runHook('memory-gate.mjs', { cwd: d, stop_hook_active: true });
+  check('memory-gate: same terminal state again → let through (blocked once)', r.code === 0, `code=${r.code} err=${r.err.slice(0, 100)}`);
+  writeFileSync(join(d, '.loop', 'state.json'), JSON.stringify({ status: 'done', backlog_item: 2 }));
+  { const t = (Date.now() + 5000) / 1000; utimesSync(join(d, '.loop', 'state.json'), t, t); }
+  r = runHook('memory-gate.mjs', { cwd: d, stop_hook_active: true });
+  check('memory-gate: a NEW terminal state under the run blocks again', r.code === 2, `code=${r.code} err=${r.err.slice(0, 100)}`);
+
+  r = runHook('run-gate.mjs', { cwd: runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending') }) }, { LOOP_HOOKS_OFF: '1' });
+  check('run-gate: LOOP_HOOKS_OFF=1 → allow', r.code === 0, `code=${r.code}`);
+
+  r = runHook('run-gate.mjs', { cwd: runProj({ run: { epic: 'demo' }, backlog: BACKLOG('done', 'pending', 'pending') }) });
+  check('run-gate: run.json without order falls back to table order', r.code === 2 && r.err.includes('next is item 2'), r.err.slice(0, 120));
+
+  // the reminder announces the run, so a fresh session resumes the runner
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'pending', 'pending'), state: { status: 'done', backlog_item: 1 } });
+  r = runHook('loop-reminder.mjs', { cwd: d });
+  check('reminder: open run → names epic, progress, next item and the resume command',
+    r.code === 0 && r.out.includes('Open epic run') && r.out.includes('1 of 3') && r.out.includes('/loop-engineering:run demo --hands-off'), r.out.slice(0, 200));
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'done', 'done') });
+  r = runHook('loop-reminder.mjs', { cwd: d });
+  check('reminder: run with nothing pending → silent about the run', !r.out.includes('Open epic run'), r.out.slice(0, 120));
 }
 
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });

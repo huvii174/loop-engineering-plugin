@@ -1,7 +1,7 @@
 {
   "name": "loop-engineering",
   "description": "Goal-based engineering loops for Claude Code: epic breakdown, a frontier-based design interview with prompt compilation, verified iteration whose history is written by a script rather than in prose, a deterministic circuit breaker and a red-first defect protocol, a multi-dimension review gate, compounding index/body memory with accounted-for recall, and mermaid visualization of loop state.",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "author": {
     "name": "Hung Nguyen",
     "email": "nghung174@gmail.com"

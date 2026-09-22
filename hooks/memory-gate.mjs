@@ -27,6 +27,13 @@
  * that nothing is worth capturing. Distillation stays model-invoked
  * (/loop-engineering:memory); this gate only protects the capture habit.
  *
+ * "Blocks only once" is `stop_hook_active` — except under an open epic run,
+ * where run-gate re-blocks every premature stop and the flag stays true for
+ * the rest of a hands-off epic. There the once-ness is a marker file keyed on
+ * the terminal state's mtime (`.loop/.memory-gate-key`): a new terminal state
+ * is a new block, the same one is let through. Without this the compounding
+ * gate would be muted for exactly the long autonomous runs it exists for.
+ *
  * Honest limitation (same as ECC's delivery-gate): this enforces the HABIT of
  * compounding, not the quality of what gets written. A `Recall:` line can be
  * present and shallow; checking that each ID was judged well is the
@@ -35,7 +42,8 @@
 
 import { join } from 'node:path';
 import { existsSync, statSync, readdirSync } from 'node:fs';
-import { readStdinJson, hooksOff, loadState, readIfExists, newestMtime, mdSection, readTail } from './lib.mjs';
+import { readStdinJson, hooksOff, loadState, loadRun, readIfExists, newestMtime, mdSection, readTail } from './lib.mjs';
+import { writeFileSync } from 'node:fs';
 import { lint } from '../scripts/memory-lint.mjs';
 
 const TERMINAL = new Set(['done', 'stuck', 'stopped-max-iterations', 'stopped-user']);
@@ -135,11 +143,21 @@ function recallReason(cwd) {
   );
 }
 
+/** Under an open run: has this exact terminal state already been blocked once? Records it if not. */
+function blockedBefore(cwd, state) {
+  const p = join(cwd, '.loop', '.memory-gate-key');
+  const key = `${state.data.status}@${Math.round(state.mtime)}`;
+  if (readIfExists(p)?.trim() === key) return true;
+  try { writeFileSync(p, key + '\n'); } catch { /* fail-open: block this once, cannot remember it */ }
+  return false;
+}
+
 async function main() {
   if (hooksOff()) return 0;
   const input = await readStdinJson();
-  if (input.stop_hook_active) return 0; // already blocked once — let it through
   const cwd = input.cwd || process.cwd();
+  const run = loadRun(cwd);
+  if (input.stop_hook_active && !run) return 0; // already blocked once — let it through
 
   const state = loadState(cwd);
 
@@ -149,7 +167,7 @@ async function main() {
 
   // Loop branch: a terminal loop must have compounded its knowledge.
   const reasons = [];
-  if (state && TERMINAL.has(state.data.status)) {
+  if (state && TERMINAL.has(state.data.status) && !(run && blockedBefore(cwd, state))) {
     const memDir = join(cwd, '.loop', 'memory');
     if (newestMtime(memDir) + MTIME_TOLERANCE_MS < state.mtime) {
       reasons.push(
@@ -167,7 +185,7 @@ async function main() {
   // Ad-hoc branch: the loop owes nothing (no state, or long-closed and clean) —
   // but this session may have done real work outside any loop.
   if (!reasons.length) {
-    if (!adhocNudgeDue(cwd, input)) return 0;
+    if (run || !adhocNudgeDue(cwd, input)) return 0; // an open run is loop territory
     process.stderr.write(
       `memory-gate (ad-hoc): this session edited files while working through errors, ` +
       `but nothing under .loop/memory/ was captured.\n` +

@@ -1,5 +1,5 @@
 {
-  "description": "loop-engineering deterministic gates — boundary enforcement while a loop runs, memory-compounding gate at stop (loop + ad-hoc nudge), open-loop reminder + memory digest at session start, keyword auto-recall on every user prompt. All fail-open; bypass with LOOP_HOOKS_OFF=1.",
+  "description": "loop-engineering deterministic gates — boundary enforcement while a loop runs, memory-compounding gate at stop (loop + ad-hoc nudge), run-gate holding an epic run open until its backlog is done, open-loop/open-run reminder + memory digest at session start, keyword auto-recall on every user prompt. All fail-open; bypass with LOOP_HOOKS_OFF=1.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -32,6 +32,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/memory-gate.mjs",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/run-gate.mjs",
             "timeout": 5
           }
         ]

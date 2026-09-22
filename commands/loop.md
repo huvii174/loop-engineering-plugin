@@ -258,7 +258,9 @@ gate writes `status: "done"`.
    to `.loop/memory/epics/<slug>.md` — including **what it taught** and the
    **slice verdict** (`well-sliced` / `too coarse` / `too fine` /
    `wrong boundary`). That verdict is the only feedback `epic-planner` ever gets;
-   skipping it breaks epic-level compounding. Then name the next pending item for
+   skipping it breaks epic-level compounding. Then, with `.loop/run.json`
+   present, the runner continues to the next pending item itself (its design
+   gate is the next action, not a hand-back); otherwise name that item for
    `/loop-engineering:design "<sub-goal>"` — or, if this closed the last item:
    write the **Epic retro** (Step 4 of the memory command), report the epic's
    acceptance-criteria status, **promote any still-binding decision** from
@@ -275,4 +277,6 @@ gate writes `status: "done"`.
    `backlog.md`: migrate per the breakdown command before touching them.)
 4. Show the final loop visualization (same rendering as
    `/loop-engineering:status`) and a plain-language summary: what was achieved,
-   evidence per success criterion, what remains.
+   evidence per success criterion, what remains. Under an open epic run the
+   one-line progress form replaces both — the runner's next item is the turn's
+   next action.
