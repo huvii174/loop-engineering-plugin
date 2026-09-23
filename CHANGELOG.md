@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.18.0 — in progress (epic enforce-class-and-epic-integration)
+
+**Fix the class, not the instance — as a check the verifier runs.** A rule
+that lives only in memory is recalled, marked applied, and skipped at the
+sibling site next to the fix. A universal criterion now names its sites, and
+the verifier re-runs that grep itself.
+
+- **`Sites:`** under a criterion in `goal.md` — one grep plus the hits seen at
+  design, or `Sites: none (<reason>)`; **`## Sweep`** in the verifier payload
+  classifies every hit `fixed`, `held` or `not-this-class`, each with a reason.
+  One definition, in the loop-engine skill ("Sites and Sweep").
+- **`loop-verifier` check 9** — reads `Sites:` from `goal.md`, runs the grep,
+  and REJECTs an unaccounted hit, a `fixed` hit still present, a reason that
+  does not hold, or a restated grep that differs. Output gains `Sites swept:`.
+  The header and the Rules line now both say nine checks (the Rules line still
+  said seven).
+- **`fixtures/two-writer/`, `fixtures/sibling-sites/`** — hashed anchors: a
+  half-fix of a universal criterion, and a hard variant (sibling in another
+  module, a different idiom, a 12-file rename in the same diff, a display-only
+  noise hit) with a full-fix control.
+- Measured before check 9 existed: the 0.17.0 verifier already REJECTed every
+  half-fix (0/3 on each of three variants, 9/9 naming the sibling). Check 9
+  makes that behaviour a rule with a mechanism, not a new detection.
+
 ## 0.17.0 — 2026-09-22
 
 **The runner is code, for the same reason the breaker is.** `--hands-off`

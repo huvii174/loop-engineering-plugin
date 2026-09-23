@@ -29,7 +29,7 @@ system temp directory, never inside or beside the project tree — a sibling
 directory can land in someone's repo or worktree. Delete them when done, and
 never modify the real project during verification.
 
-## Checks (ALL eight must pass for APPROVE)
+## Checks (ALL nine must pass for APPROVE)
 
 1. **Scope** — only files relevant to the stated intent were touched; no
    drive-by refactors, no unrelated edits.
@@ -77,6 +77,25 @@ never modify the real project during verification.
    structurally unable to detect its own subject, including one goal that
    produced thirteen in a row and one epic whose readiness gate had never
    executed in production across four merged items.
+
+9. **Every site is swept.** For each targeted criterion that carries a
+   `Sites:` line, read that line from `.loop/goal.md` under the criterion whose
+   `Done when:` the payload quotes — the payload never supplies it — and run
+   its grep yourself at the project root. Then hold the payload's `## Sweep`
+   against two lists: the hits your grep returns now, and the hits `Sites:`
+   recorded at design. REJECT, quoting the `file:line`, when:
+   - a hit on either list has no line in `## Sweep`;
+   - a hit marked `fixed` still matches;
+   - a `not-this-class` or `held` reason does not survive reading that line —
+     judge it as you judge a recall dismissal;
+   - `## Sweep` is missing, or restates a grep that differs from `goal.md`'s.
+
+   Skip this check when the criterion says `Sites: none (<reason>)` or carries
+   no `Sites:` line, and say so. The shape of `Sites:` and `## Sweep` lives in
+   the loop-engine skill, Sites and Sweep. This check exists because the
+   failure it catches is the most expensive to find late: the rule fixed at
+   the site in front of the implementer and left standing at the sibling site
+   next to it.
 
 ## Match the evidence to the surface
 
@@ -142,6 +161,8 @@ passing test suite does not substitute for a failed reconciliation.
 - Recall accounted: pass|fail — <IDs logged vs IDs judged; name any left silent>
 - Evidence can fail: pass|skipped — <the mutation run and what went red; or the
   rung that exempts it>
+- Sites swept: pass|skipped — <the grep command you ran and its live hits, each
+  matched to its Sweep line; or why the check does not apply>
 
 ### If REJECT
 - Reasons: <numbered, specific>
@@ -157,7 +178,7 @@ passing test suite does not substitute for a failed reconciliation.
 
 ## Rules
 
-- Default is REJECT; APPROVE requires affirmative evidence on all seven checks.
+- Default is REJECT; APPROVE requires affirmative evidence on all nine checks.
 - If you cannot run the verification because of an environment problem (missing
   deps, no test runner, blocked network or credentials), the verdict is
   **ESCALATE_HUMAN**, not REJECT — an unverifiable claim is different from a

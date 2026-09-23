@@ -236,6 +236,8 @@ a failed approach.
 - **Delegated:** <agent> — <task> — <outcome>   (or "none")
 - **Verification:** <exact command(s) the verifier ran>
 - **Evidence:** <trimmed command output proving the verdict>
+- **Sweep:** <the payload's `## Sweep` block — when a targeted criterion
+  carries `Sites:` or the iteration is a review fix; see Sites and Sweep below>
 - **Verdict:** pass | fail | escalate — <reason>
 - **Learning:** <one line for memory, or "none">
 - **Next:** <what the next iteration should do>
@@ -248,6 +250,46 @@ the seven a later reader cannot reconstruct from `state.json`. `Delegated`,
 It also refuses a `--criterion` that the record's own criterion line does not
 name, because state counting one criterion while the record grades another is a
 mismatch nothing downstream can see.
+
+## Sites and Sweep — fix the class, not the instance
+
+A criterion whose rule is universal ("never", "every", "all", "any") names the
+places the rule must hold, so the verifier checks every site and not only the
+one the implementer fixed. A rule that lives only in memory gets recalled,
+marked applied, and skipped at the sibling site next to the fix; a line the
+verifier re-runs does not.
+
+**`Sites:`** sits under the criterion in `goal.md`, written at the design gate:
+
+```markdown
+      Sites: `grep -rnE '<pattern>' <path>` → <n> hits at design:
+        <file:line>
+        <file:line>
+```
+
+One grep per criterion; a second grep is a second criterion. The hit list is
+what the design saw, so a hit that appears later is visible as new. When no grep
+can enumerate the sites, write `Sites: none (<reason>)` instead: the omission
+stays visible, the tenth man attacks the reason, and the criterion is exempt
+from the sweep.
+
+**`## Sweep`** is a block in the verifier payload, carried onto the record's
+`Sweep:` line. It is required when a targeted criterion carries `Sites:`, and on
+every review fix — a review fix on a criterion without `Sites:` writes its own
+grep for the defect's shape.
+
+```markdown
+## Sweep
+Sites: `<the grep, verbatim from goal.md>`
+- <file:line> — fixed (<what changed>)
+- <file:line> — held (<why it already satisfies the rule>)
+- <file:line> — not-this-class (<why the rule does not reach this line>)
+```
+
+Every hit the grep returns now, and every design-time hit, gets one line.
+`fixed | held | not-this-class` is the whole vocabulary, and each carries its
+reason. The verifier re-runs the grep itself (its check 9) and reads `Sites:`
+from `goal.md`, never from the payload.
 
 ## Iteration discipline
 

@@ -1,0 +1,196 @@
+diff --git a/src/billing/providers/litellm.mjs b/src/billing/providers/litellm.mjs
+index b94ce8c..f267c24 100644
+--- a/src/billing/providers/litellm.mjs
++++ b/src/billing/providers/litellm.mjs
+@@ -1,12 +1,12 @@
+-import { log } from '../../lib/log.mjs';
++import { trace } from '../../lib/log.mjs';
+ import { normaliseModel } from '../../lib/models.mjs';
+ 
+ // Settles one litellm completion: normalises the model, derives the charge,
+ // and appends the usage row inline on the response path.
+ export function settleLitellm(db, response) {
+   const model = normaliseModel(response.model);
+-  log('billing.litellm', model);
+-  const charge = typeof response.cost === 'number' ? response.cost : 0;
++  trace('billing.litellm', model);
++  const charge = typeof response.cost === 'number' ? response.cost : null;
+   const tokens = response.usage?.prompt_tokens ?? null;
+   db.push({ source: 'litellm', model, input_tokens: tokens, cost: charge });
+   return { model, charge };
+diff --git a/src/lib/log.mjs b/src/lib/log.mjs
+index a6fcd9c..5589b93 100644
+--- a/src/lib/log.mjs
++++ b/src/lib/log.mjs
+@@ -1,3 +1,3 @@
+-export function log(scope, ...parts) {
++export function trace(scope, ...parts) {
+   if (process.env.DEBUG) console.error(`[${scope}]`, ...parts);
+ }
+diff --git a/src/lib/models.mjs b/src/lib/models.mjs
+index 72ea79c..0d99246 100644
+--- a/src/lib/models.mjs
++++ b/src/lib/models.mjs
+@@ -1,5 +1,5 @@
+-import { log } from './log.mjs';
++import { trace } from './log.mjs';
+ export function normaliseModel(name) {
+-  log('models', name);
++  trace('models', name);
+   return String(name ?? 'unknown').toLowerCase();
+ }
+diff --git a/src/routes/agents.mjs b/src/routes/agents.mjs
+index ad08189..f9c6701 100644
+--- a/src/routes/agents.mjs
++++ b/src/routes/agents.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleAgents(req) {
+-  log('routes.agents', req.method, req.path);
++  trace('routes.agents', req.method, req.path);
+   return { status: 200, route: 'agents' };
+ }
+diff --git a/src/routes/audit.mjs b/src/routes/audit.mjs
+index 0190b6b..cf09c0b 100644
+--- a/src/routes/audit.mjs
++++ b/src/routes/audit.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleAudit(req) {
+-  log('routes.audit', req.method, req.path);
++  trace('routes.audit', req.method, req.path);
+   return { status: 200, route: 'audit' };
+ }
+diff --git a/src/routes/exports.mjs b/src/routes/exports.mjs
+index 09f11d1..e7cc897 100644
+--- a/src/routes/exports.mjs
++++ b/src/routes/exports.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleExports(req) {
+-  log('routes.exports', req.method, req.path);
++  trace('routes.exports', req.method, req.path);
+   return { status: 200, route: 'exports' };
+ }
+diff --git a/src/routes/health.mjs b/src/routes/health.mjs
+index f2f82a5..f339dfa 100644
+--- a/src/routes/health.mjs
++++ b/src/routes/health.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleHealth(req) {
+-  log('routes.health', req.method, req.path);
++  trace('routes.health', req.method, req.path);
+   return { status: 200, route: 'health' };
+ }
+diff --git a/src/routes/quota.mjs b/src/routes/quota.mjs
+index de26734..3908c32 100644
+--- a/src/routes/quota.mjs
++++ b/src/routes/quota.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleQuota(req) {
+-  log('routes.quota', req.method, req.path);
++  trace('routes.quota', req.method, req.path);
+   return { status: 200, route: 'quota' };
+ }
+diff --git a/src/routes/sessions.mjs b/src/routes/sessions.mjs
+index e0ed645..1805c54 100644
+--- a/src/routes/sessions.mjs
++++ b/src/routes/sessions.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleSessions(req) {
+-  log('routes.sessions', req.method, req.path);
++  trace('routes.sessions', req.method, req.path);
+   return { status: 200, route: 'sessions' };
+ }
+diff --git a/src/routes/settings.mjs b/src/routes/settings.mjs
+index 703cd34..606b592 100644
+--- a/src/routes/settings.mjs
++++ b/src/routes/settings.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleSettings(req) {
+-  log('routes.settings', req.method, req.path);
++  trace('routes.settings', req.method, req.path);
+   return { status: 200, route: 'settings' };
+ }
+diff --git a/src/routes/teams.mjs b/src/routes/teams.mjs
+index a158225..f97b88c 100644
+--- a/src/routes/teams.mjs
++++ b/src/routes/teams.mjs
+@@ -1,6 +1,6 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ export function handleTeams(req) {
+-  log('routes.teams', req.method, req.path);
++  trace('routes.teams', req.method, req.path);
+   return { status: 200, route: 'teams' };
+ }
+diff --git a/src/usage/sdk-writer.mjs b/src/usage/sdk-writer.mjs
+index dcf1f38..37bb05c 100644
+--- a/src/usage/sdk-writer.mjs
++++ b/src/usage/sdk-writer.mjs
+@@ -1,7 +1,7 @@
+-import { log } from '../lib/log.mjs';
++import { trace } from '../lib/log.mjs';
+ 
+ // Writes one usage row from an Anthropic SDK response.
+ export function writeSdkUsage(db, usage) {
+-  log('usage.sdk', usage.model);
+-  db.push({ source: 'sdk', model: usage.model, input_tokens: usage.input_tokens ?? null, cost: usage.cost || 0 });
++  trace('usage.sdk', usage.model);
++  db.push({ source: 'sdk', model: usage.model, input_tokens: usage.input_tokens ?? null, cost: usage.cost ?? null });
+ }
+diff --git a/test/litellm.test.mjs b/test/litellm.test.mjs
+new file mode 100644
+index 0000000..713e9ba
+--- /dev/null
++++ b/test/litellm.test.mjs
+@@ -0,0 +1,12 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { settleLitellm } from '../src/billing/providers/litellm.mjs';
++
++test('litellm: an unmeasured cost is stored as null, not 0', () => {
++  const db = []; settleLitellm(db, { model: 'M', usage: { prompt_tokens: 5 } });
++  assert.equal(db[0].cost, null);
++});
++test('litellm: a measured cost is kept, including 0', () => {
++  const db = []; settleLitellm(db, { model: 'M', cost: 0, usage: { prompt_tokens: 5 } });
++  assert.equal(db[0].cost, 0);
++});
+diff --git a/test/sdk-writer.test.mjs b/test/sdk-writer.test.mjs
+new file mode 100644
+index 0000000..2324af0
+--- /dev/null
++++ b/test/sdk-writer.test.mjs
+@@ -0,0 +1,12 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { writeSdkUsage } from '../src/usage/sdk-writer.mjs';
++
++test('sdk: an unmeasured cost is stored as null, not 0', () => {
++  const db = []; writeSdkUsage(db, { model: 'm', input_tokens: 10 });
++  assert.equal(db[0].cost, null);
++});
++test('sdk: a measured cost is kept', () => {
++  const db = []; writeSdkUsage(db, { model: 'm', input_tokens: 10, cost: 3 });
++  assert.equal(db[0].cost, 3);
++});

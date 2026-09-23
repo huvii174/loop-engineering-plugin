@@ -113,6 +113,10 @@ increment** from the design's work breakdown:
    <file list + summary of the change>
    ## Claimed verification
    <command(s) you believe verify it, and what you observed>
+   ## Sweep
+   <required when a targeted criterion carries `Sites:` or this is a review
+   fix: one line per grep hit — shape in the loop-engine skill, Sites and
+   Sweep. Otherwise "none". The verifier re-runs the grep (its check 9)>
    ## Recall accounting
    <every ID now in .loop/.recall-log: `applied (what it changed)` or
    `dismissed (why it does not apply here)` — or "none injected". The verifier
