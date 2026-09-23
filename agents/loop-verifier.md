@@ -78,20 +78,30 @@ never modify the real project during verification.
    produced thirteen in a row and one epic whose readiness gate had never
    executed in production across four merged items.
 
-9. **Every site is swept.** For each targeted criterion that carries a
-   `Sites:` line, read that line from `.loop/goal.md` under the criterion whose
-   `Done when:` the payload quotes — the payload never supplies it — and run
-   its grep yourself at the project root. Then hold the payload's `## Sweep`
-   against two lists: the hits your grep returns now, and the hits `Sites:`
-   recorded at design. REJECT, quoting the `file:line`, when:
-   - a hit on either list has no line in `## Sweep`;
+9. **Every site is swept.** Take the grep from `.loop/goal.md` when the
+   targeted criterion carries a `Sites:` line — read it under the criterion
+   whose `Done when:` the payload quotes; the payload never supplies it. On a
+   review fix whose criterion carries no `Sites:`, take the grep from the
+   payload's `## Sweep` instead, and judge its shape, not its hit count: a
+   grep written to match only the one line the finding named is a REJECT; a
+   broader grep that returns only that line is evidence the defect was
+   isolated. Run the grep yourself at the project root. Then hold
+   the payload's `## Sweep` against two lists: the hits your grep returns now,
+   and the hits `Sites:` recorded at design (none on a review fix without
+   `Sites:`). REJECT, quoting the `file:line`, when:
+   - a hit your grep returns, or a design-time hit, has no line in
+     `## Sweep` — match a design-time hit by its file and the text `Sites:`
+     recorded for it, not its line number, because edits above it move the
+     line;
    - a hit marked `fixed` still matches;
    - a `not-this-class` or `held` reason does not survive reading that line —
      judge it as you judge a recall dismissal;
-   - `## Sweep` is missing, or restates a grep that differs from `goal.md`'s.
+   - `## Sweep` is missing, or restates a grep that differs from the one you
+     ran.
 
-   Skip this check when the criterion says `Sites: none (<reason>)` or carries
-   no `Sites:` line, and say so. The shape of `Sites:` and `## Sweep` lives in
+   Skip this check when the criterion says `Sites: none (<reason>)`, or
+   carries no `Sites:` line and the iteration is not a review fix, and say
+   so. The shape of `Sites:` and `## Sweep` lives in
    the loop-engine skill, Sites and Sweep. This check exists because the
    failure it catches is the most expensive to find late: the rule fixed at
    the site in front of the implementer and left standing at the sibling site

@@ -263,12 +263,13 @@ verifier re-runs does not.
 
 ```markdown
       Sites: `grep -rnE '<pattern>' <path>` → <n> hits at design:
-        <file:line>
-        <file:line>
+        <file:line:matched text>
+        <file:line:matched text>
 ```
 
 One grep per criterion; a second grep is a second criterion. The hit list is
-what the design saw, so a hit that appears later is visible as new. When no grep
+the grep's own `-n` output, pasted, so each hit keeps its text; it is what the
+design saw, and a hit that appears later is visible as new. When no grep
 can enumerate the sites, write `Sites: none (<reason>)` instead: the omission
 stays visible, the tenth man attacks the reason, and the criterion is exempt
 from the sweep.
@@ -280,16 +281,21 @@ grep for the defect's shape.
 
 ```markdown
 ## Sweep
-Sites: `<the grep, verbatim from goal.md>`
+Sites: `<the grep: verbatim from goal.md, or the review fix's own>`
 - <file:line> — fixed (<what changed>)
 - <file:line> — held (<why it already satisfies the rule>)
 - <file:line> — not-this-class (<why the rule does not reach this line>)
 ```
 
-Every hit the grep returns now, and every design-time hit, gets one line.
+The grep's live hits and the design-time hits each get one line. A design-time
+hit that has moved is written at its live number, with the design number in
+its reason (`was :160`); the verifier matches it by file and the text `Sites:`
+recorded for it.
 `fixed | held | not-this-class` is the whole vocabulary, and each carries its
-reason. The verifier re-runs the grep itself (its check 9) and reads `Sites:`
-from `goal.md`, never from the payload.
+reason. The verifier re-runs the grep itself (its check 9): from `goal.md`
+when the criterion carries `Sites:`, never from the payload; from the payload
+only for a review fix without `Sites:`, and then it judges whether the grep
+reaches the defect's shape.
 
 ## Iteration discipline
 

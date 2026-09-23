@@ -26,6 +26,10 @@ the verifier re-runs that grep itself.
 - Measured before check 9 existed: the 0.17.0 verifier already REJECTed every
   half-fix (0/3 on each of three variants, 9/9 naming the sibling). Check 9
   makes that behaviour a rule with a mechanism, not a new detection.
+- Check 9 after review: a review fix without `Sites:` is swept with its own
+  grep, judged by shape rather than hit count; a design-time hit is matched by
+  file and the text `Sites:` recorded for it (the template now takes the
+  grep's `-n` output), so a hit moved by edits above it is not a false REJECT.
 - The `Sites swept:` output line carries the grep command in a template slot:
   with the command only described in prose, 2 of 3 check-9 verdicts left it
   under "Commands run" instead.
