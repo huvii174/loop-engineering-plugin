@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.18.0 — in progress (epic enforce-class-and-epic-integration)
+## 0.18.1 — in progress (epic enforce-class-and-epic-integration)
+
+One entry for the whole epic; the patch number moves each time the epic needs
+the plugin reinstalled to measure itself (D-eci-017, D-eci-018).
 
 **Fix the class, not the instance — as a check the verifier runs.** A rule
 that lives only in memory is recalled, marked applied, and skipped at the
@@ -23,6 +26,9 @@ the verifier re-runs that grep itself.
 - Measured before check 9 existed: the 0.17.0 verifier already REJECTed every
   half-fix (0/3 on each of three variants, 9/9 naming the sibling). Check 9
   makes that behaviour a rule with a mechanism, not a new detection.
+- The `Sites swept:` output line carries the grep command in a template slot:
+  with the command only described in prose, 2 of 3 check-9 verdicts left it
+  under "Commands run" instead.
 
 ## 0.17.0 — 2026-09-22
 

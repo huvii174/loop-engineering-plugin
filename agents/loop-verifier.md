@@ -161,8 +161,9 @@ passing test suite does not substitute for a failed reconciliation.
 - Recall accounted: pass|fail — <IDs logged vs IDs judged; name any left silent>
 - Evidence can fail: pass|skipped — <the mutation run and what went red; or the
   rung that exempts it>
-- Sites swept: pass|skipped — <the grep command you ran and its live hits, each
-  matched to its Sweep line; or why the check does not apply>
+- Sites swept: pass|fail|skipped — `<the grep command, verbatim as you ran it>`
+  → <each live hit and design-time hit, matched to its Sweep line>; when
+  skipped, why the check does not apply
 
 ### If REJECT
 - Reasons: <numbered, specific>
