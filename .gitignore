@@ -13,7 +13,7 @@ node_modules/
 # be recovered, which is true and is the right answer for a throwaway store.
 # A project whose store is real should NOT copy this line — see the `.loop/*` +
 # `!.loop/memory/` pattern in skills/loop-engine.
-.loop/
+/.loop/
 
 # evidence copied in for analysis, and local scratch — never shipped
 loop-evd/
