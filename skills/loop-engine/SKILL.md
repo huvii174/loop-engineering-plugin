@@ -165,7 +165,7 @@ prevents.
 ```
 
 **`scripts/loop-record.mjs` is the only writer of `history`.** It refuses a
-verdict outside the enum, a record missing `Verdict:` / `Evidence:` / `Recall:`,
+verdict outside the enum, a record the iteration-record format below refuses,
 an `iteration` that disagrees with `history`, and any `.recall-log` ID the
 record never accounts for — then empties that inbox last, so a crash between the
 two leaves the IDs to be answered again rather than lost.
@@ -249,7 +249,14 @@ the seven a later reader cannot reconstruct from `state.json`. `Delegated`,
 `Learning` and `Next` are narrative: requiring them turns a record into a form.
 It also refuses a `--criterion` that the record's own criterion line does not
 name, because state counting one criterion while the record grades another is a
-mismatch nothing downstream can see.
+mismatch nothing downstream can see. And it refuses a record that owes a
+`Sweep:` line and lacks one, or whose line classifies no hit — at least one
+`file:line` followed by `fixed`, `held` or `not-this-class` (a bare `fixed`,
+`none`, `n/a` or `TBD` are all refused) — owed on every
+review fix and on any record whose `--criterion` names a `goal.md` block that
+carries `Sites:` (Sites and Sweep, below). When
+`goal.md` carries `Sites:` and `--criterion` matches no single block, it refuses
+rather than guess whether the sweep is owed.
 
 ## Sites and Sweep — fix the class, not the instance
 

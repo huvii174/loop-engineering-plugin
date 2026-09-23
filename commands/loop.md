@@ -142,8 +142,9 @@ increment** from the design's work breakdown:
    the history entry, bumps `iteration`, reconciles every `.loop/.recall-log` ID
    against the record's `Recall:` line, and empties that inbox last. Exit `1`
    means nothing was written and stderr says what to fix — a verdict outside the
-   enum, a missing `Evidence:` line, an unaccounted recall ID, an `iteration`
-   that disagrees with `history`.
+   enum, a missing `Evidence:` line, an unaccounted recall ID, a `Sweep:` line a
+   review fix or a `Sites:` criterion owes, an `iteration` that disagrees with
+   `history`. The full list lives in the loop-engine skill's record format.
 
    Two arguments carry the whole weight. **`--verdict`** is what every counter
    reads: a verifier that approved four criteria and rejected one is `fail`, and

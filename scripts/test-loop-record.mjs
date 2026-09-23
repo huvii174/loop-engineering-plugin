@@ -33,7 +33,7 @@ const without = (field) => RECORD.split('\n')
   .filter((l) => !l.startsWith(`- **${field}:**`)).join('\n');
 
 /** A fresh .loop/ with one state file, one record, and a recall inbox. */
-function fixture({ state, record = RECORD, recallLog = '' } = {}) {
+function fixture({ state, record = RECORD, recallLog = '', goal = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'loop-record-'));
   const loop = join(dir, '.loop');
   mkdirSync(join(loop, 'iterations'), { recursive: true });
@@ -42,6 +42,7 @@ function fixture({ state, record = RECORD, recallLog = '' } = {}) {
   }, null, 2));
   if (record !== null) writeFileSync(join(loop, 'iterations', '0001.md'), record);
   writeFileSync(join(loop, '.recall-log'), recallLog);
+  if (goal !== null) writeFileSync(join(loop, 'goal.md'), goal);
   return { dir, loop };
 }
 
@@ -55,6 +56,32 @@ function run(loop, args) {
 }
 
 const OK = ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'close C1', '--criteria-passed', '1', '--criterion', 'C1'];
+
+const GOAL = [
+  '# Goal',
+  '## Success criteria (verifiable)',
+  '- [ ] C1 no writer stores 0 for an unmeasured cost',
+  '      Done when: no writer stores 0 for an unmeasured cost — `node --test` exits 0',
+  "      Sites: `grep -rnE 'cost [|][|] 0' src` → 1 hits at design:",
+  '        src/usage/sdk.mjs:6:  cost: usage.cost || 0',
+  '      Must not: no test deleted or weakened',
+  '- [ ] C2 the README names the flag',
+  '      Done when: `grep -c -- --flag README.md` prints 1',
+  '- [x] C3 no screen shows $0.00 for an unmeasured cost',
+  '      Done when: every cost tile renders an unmeasured cost as a dash',
+  '      Sites: none (tiles are generated at runtime; no grep enumerates them)',
+  '## Global boundaries',
+  '- Do not touch: `fixtures/**`',
+].join('\n');
+
+const SWEEP = '\n- **Sweep:** Sites `grep -rnE ...` — src/usage/sdk.mjs:6 fixed (now `?? null`)';
+/** RECORD retargeted at another criterion id. */
+const at = (id, extra = '') => RECORD.replace('- **Goal criterion targeted:** C1', `- **Goal criterion targeted:** ${id}`) + extra;
+const untouched = ({ loop }) => {
+  const s = JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8'));
+  return s.iteration === 0 && s.history.length === 0 && readFileSync(join(loop, '.recall-log'), 'utf8').includes('L-315');
+};
+const LOG = '2026-09-23T00:00:00Z\tL-315\t2\tinlined\n';
 
 const CASES = [
   {
@@ -141,7 +168,8 @@ const CASES = [
   },
   {
     name: 'a review-fix records its kind so the plateau counter can step over it',
-    fixture: { record: RECORD.replace('- **Goal criterion targeted:** C1', '- **Goal criterion targeted:** none — a round-2 review-gate finding') },
+    fixture: { record: RECORD.replace('- **Goal criterion targeted:** C1', '- **Goal criterion targeted:** none — a round-2 review-gate finding')
+      + '\n- **Sweep:** Sites `grep -rn anchor src` — src/a.ts:3 fixed (anchor pinned)' },
     args: ['--verdict', 'pass', '--kind', 'review-fix', '--intent', 'close the anchor finding', '--criteria-passed', '7'],
     code: 0,
     check: ({ loop }) => JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8')).history[0].kind === 'review-fix',
@@ -216,6 +244,115 @@ const CASES = [
     args: OK,
     code: 1, // no 0004.md — but the point is the field survives a refusal untouched
     check: ({ loop }) => JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8')).record_contract_since === 2,
+  },
+  {
+    // D-eci-003: every review fix owes a sweep, whatever its criterion.
+    name: 'refuses a review-fix record with no Sweep: line, and writes nothing',
+    fixture: { goal: GOAL, recallLog: LOG, record: at('none — a review-gate finding') },
+    args: ['--verdict', 'pass', '--kind', 'review-fix', '--intent', 'fix the finding', '--criteria-passed', '1'],
+    code: 1,
+    stderr: 'no `Sweep:` line',
+    check: untouched,
+  },
+  {
+    name: 'refuses a record for a criterion carrying Sites: when it has no Sweep: line',
+    fixture: { goal: GOAL, recallLog: LOG },
+    args: OK,
+    code: 1,
+    stderr: 'carries `Sites:`',
+    check: untouched,
+  },
+  {
+    name: 'records a criterion carrying Sites: once the record has a Sweep: line',
+    fixture: { goal: GOAL, record: RECORD + SWEEP },
+    args: OK,
+    code: 0,
+    check: ({ loop }) => JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8')).history.length === 1,
+  },
+  {
+    // A required sweep written as "none" is silence in a longer form (D-eci-019).
+    name: 'refuses Sweep: none where a sweep is required',
+    fixture: { goal: GOAL, recallLog: LOG, record: RECORD + '\n- **Sweep:** none (nothing to sweep)' },
+    args: OK,
+    code: 1,
+    stderr: 'says `Sweep: none',
+    check: untouched,
+  },
+  {
+    // D-eci-004: Sites: none (<reason>) is the visible opt-out.
+    name: 'a criterion with Sites: none (<reason>) owes no Sweep: line',
+    fixture: { goal: GOAL, record: at('C3') },
+    args: ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'x', '--criteria-passed', '1', '--criterion', 'C3'],
+    code: 0,
+  },
+  {
+    name: 'a criterion without Sites: owes no Sweep: line',
+    fixture: { goal: GOAL, record: at('C2') },
+    args: ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'x', '--criteria-passed', '1', '--criterion', 'C2'],
+    code: 0,
+  },
+  {
+    // A misspelled --criterion must not be how a sweep gets skipped.
+    name: 'refuses when goal.md carries Sites: and --criterion matches no block',
+    fixture: { goal: GOAL, recallLog: LOG, record: at('C9') },
+    args: ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'x', '--criteria-passed', '1', '--criterion', 'C9'],
+    code: 1,
+    stderr: 'matches no block',
+    check: untouched,
+  },
+  {
+    name: 'a sentence-shaped --criterion is located by its Done when: text',
+    fixture: { goal: GOAL, recallLog: LOG, record: at('the unmeasured-cost writers') },
+    args: ['--verdict', 'pass', '--kind', 'criterion', '--intent', 'x', '--criteria-passed', '1',
+           '--criterion', 'no writer stores 0 for an unmeasured cost — `node --test` exits 0'],
+    code: 1,
+    stderr: 'C1 no writer stores 0',
+    check: untouched,
+  },
+  {
+    // Review gate, item 2: a decoy `Sites: none (…)` above the real grep used to
+    // waive the sweep, because only the first `Sites:` line was read.
+    name: 'refuses a criterion block carrying two Sites: lines — a decoy none cannot waive the sweep',
+    fixture: { goal: GOAL.replace("      Sites: `grep -rnE", "      Sites: none (decoy)\n      Sites: `grep -rnE"), recallLog: LOG },
+    args: OK,
+    code: 1,
+    stderr: 'carries 2 `Sites:` lines',
+    check: untouched,
+  },
+  {
+    // Review gate round 2, item 2: `--kind bookkeeping` skipped the lookup.
+    name: 'a bookkeeping entry naming a Sites: criterion still owes a Sweep: line',
+    fixture: { goal: GOAL, recallLog: LOG },
+    args: ['--verdict', 'pass', '--kind', 'bookkeeping', '--intent', 'x', '--criteria-passed', '1', '--criterion', 'C1'],
+    code: 1,
+    stderr: 'no `Sweep:` line',
+    check: untouched,
+  },
+  {
+    // Review gate round 2, item 2: any placeholder other than "none" passed.
+    name: 'refuses a Sweep: value that classifies no hit (n/a)',
+    fixture: { goal: GOAL, recallLog: LOG, record: RECORD + '\n- **Sweep:** n/a' },
+    args: OK,
+    code: 1,
+    stderr: 'fixed, held or not-this-class',
+    check: untouched,
+  },
+  {
+    // Iteration 4's REJECT: a vocabulary word with no hit passed.
+    name: 'refuses a Sweep: value that names a class but no hit (bare "fixed")',
+    fixture: { goal: GOAL, recallLog: LOG, record: RECORD + '\n- **Sweep:** fixed' },
+    args: OK,
+    code: 1,
+    stderr: 'fixed, held or not-this-class',
+    check: untouched,
+  },
+  {
+    name: 'refuses a placeholder that happens to contain a class word ("TBD — nothing fixed yet")',
+    fixture: { goal: GOAL, recallLog: LOG, record: RECORD + '\n- **Sweep:** TBD — nothing fixed yet' },
+    args: OK,
+    code: 1,
+    stderr: 'fixed, held or not-this-class',
+    check: untouched,
   },
 ];
 

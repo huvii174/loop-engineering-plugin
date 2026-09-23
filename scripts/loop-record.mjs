@@ -26,9 +26,12 @@
  *   - a verdict outside the enum, or a `kind` outside criterion|review-fix|bookkeeping
  *   - a missing or unparseable state file, or one whose `iteration` disagrees
  *     with `history` (the mismatch 27 of 75 archived runs carry)
- *   - an iteration record file that does not exist, or that lacks `Verdict:`,
- *     `Evidence:` or `Recall:`
+ *   - an iteration record file that does not exist, or that lacks a section in
+ *     REQUIRED_SECTIONS (the list, with why each is required, is below)
  *   - a `.recall-log` ID the record's `Recall:` line never accounts for
+ *   - a missing `Sweep:` line, or one that classifies no hit, where one is owed:
+ *     every review fix, and any record whose --criterion names a goal.md block
+ *     carrying `Sites:` (see sweepRequirement)
  *
  * The recall reconciliation is the half no gate could do before. `.recall-log`
  * is an inbox: the recall hook appends every injected ID, and Record empties it
@@ -175,6 +178,99 @@ function criterionMismatch(record, criterion) {
   );
 }
 
+/**
+ * `Sweep:` — the record's half of "fix the class, not the instance".
+ *
+ * Required on every review fix, and on a record whose targeted criterion
+ * carries `Sites:` in `.loop/goal.md` (shape: the loop-engine skill, "Sites and
+ * Sweep"). `Sites: none (<reason>)` is the visible opt-out and requires nothing.
+ * The criterion's block is found from `--criterion`, never guessed: an id-shaped
+ * value matches a block header as a word, a sentence matches the header or the
+ * block's `Done when:` line. When goal.md carries `Sites:` and no single block
+ * matches, the record is refused — a misspelled `--criterion` must not be the
+ * way a sweep is skipped. A required sweep that classifies no hit ("none",
+ * "n/a", "TBD") is refused too: it is silence in a longer form.
+ */
+const SWEEP_LINE = /^\s*[-*]?\s*\*{0,2}Sweep\*{0,2}\s*:(.*)$/im;
+const SITES_LINE = /^\s*Sites\s*:(.*)$/im;
+const SITES_ALL = /^\s*Sites\s*:(.*)$/gim;
+const CLASSIFIED_HIT = /[\w./-]+:\d+\b[^;]*?\b(fixed|held|not-this-class)\b/i;
+
+function criterionBlocks(goal) {
+  const section = /^##\s+Success criteria[^\n]*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(goal);
+  const blocks = [];
+  let cur = null;
+  for (const line of (section ? section[1] : '').split('\n')) {
+    if (/^\s*-\s*\[[ xX]\]/.test(line)) { cur = { header: line.trim(), lines: [line] }; blocks.push(cur); }
+    else if (cur) cur.lines.push(line);
+  }
+  return blocks.map((b) => {
+    const text = b.lines.join('\n');
+    const done = /^\s*Done when\s*:(.*)$/im.exec(text);
+    return { header: b.header, text, doneWhen: done ? done[1] : '' };
+  });
+}
+
+const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** { required, why } or { problem }; `required: false` costs the record nothing. */
+function sweepRequirement(kind, criterion, goal) {
+  if (kind === 'review-fix') return { required: true, why: 'every review fix carries a sweep' };
+  if (!goal || !SITES_LINE.test(goal)) return { required: false };
+  // Any kind that names a criterion is looked up: a bookkeeping entry carrying
+  // `--criterion` must not be the way a `Sites:` criterion closes unswept.
+  if (!criterion) {
+    if (kind !== 'criterion') return { required: false };
+    return { problem: '.loop/goal.md carries `Sites:` but no --criterion names the targeted criterion, so the recorder cannot tell whether this record owes a `Sweep:` line. Pass --criterion.' };
+  }
+  const c = String(criterion);
+  const word = new RegExp(`(^|[^\\w])${escapeRe(c)}([^\\w]|$)`, 'i');
+  const lower = c.toLowerCase();
+  const matches = criterionBlocks(goal).filter((b) => (c.length <= ID_SHAPED
+    ? word.test(b.header)
+    : b.header.toLowerCase().includes(lower) || b.doneWhen.toLowerCase().includes(lower)));
+  if (matches.length !== 1) {
+    const found = matches.length ? `${matches.length} blocks (${matches.map((b) => JSON.stringify(b.header.slice(0, 40))).join(', ')})` : 'no block';
+    return {
+      problem: `--criterion ${JSON.stringify(c.slice(0, 60))} matches ${found} under \`## Success criteria\` in .loop/goal.md, ` +
+        'which carries `Sites:` — the recorder refuses rather than guess whether this record owes a `Sweep:` line. ' +
+        'Name the criterion by its id or quote its `Done when:` text.',
+    };
+  }
+  // One grep per criterion: a second `Sites:` line is a second criterion. Reading
+  // only the first would let a `Sites: none (…)` placed above the real grep waive
+  // the sweep, so a block with more than one is refused rather than resolved.
+  const all = [...matches[0].text.matchAll(SITES_ALL)];
+  if (all.length > 1) {
+    return {
+      problem: `the targeted criterion (${JSON.stringify(matches[0].header.slice(0, 50))}) carries ${all.length} ` +
+        '`Sites:` lines — one grep per criterion (loop-engine skill, "Sites and Sweep"); a second grep is a ' +
+        'second criterion. The recorder refuses rather than pick one.',
+    };
+  }
+  const sites = all[0];
+  if (!sites || /^\s*none\s*\(/i.test(sites[1])) return { required: false };
+  return { required: true, why: `the targeted criterion (${JSON.stringify(matches[0].header.slice(0, 50))}) carries \`Sites:\`` };
+}
+
+function sweepProblem(record, rp, need) {
+  if (!need.required) return null;
+  const line = SWEEP_LINE.exec(record);
+  const value = line ? line[1].replace(/^[\s*]+/, '').trim() : '';
+  if (!line) {
+    return `${rp} has no \`Sweep:\` line — required because ${need.why}. One line per grep hit, ` +
+      'shape in the loop-engine skill, "Sites and Sweep".';
+  }
+  // A sweep classifies hits: at least one `file:line` followed, in the same
+  // clause, by fixed, held or not-this-class. A vocabulary word alone (`fixed`,
+  // `TBD — nothing fixed yet`) or a placeholder (`n/a`, "none") names no hit.
+  if (!CLASSIFIED_HIT.test(value)) {
+    return `${rp} says \`Sweep: ${JSON.stringify(value || '(empty)').slice(1, -1)}\` but a sweep is required because ` +
+      `${need.why} — account for each grep hit as fixed, held or not-this-class.`;
+  }
+  return null;
+}
+
 /** IDs the recall hook injected and nobody has accounted for yet. */
 function recallLogIds(dir) {
   const text = readIfExists(join(dir, '.recall-log'));
@@ -294,6 +390,12 @@ function main(argv) {
       }
       const mismatch = criterionMismatch(record, args.criterion ? String(args.criterion) : null);
       if (mismatch) problems.push(mismatch);
+      const need = sweepRequirement(kind, args.criterion ? String(args.criterion) : null, readIfExists(join(dir, 'goal.md')));
+      if (need.problem) problems.push(need.problem);
+      else {
+        const sweep = sweepProblem(record, rp, need);
+        if (sweep) problems.push(sweep);
+      }
       const missing = reconcileRecall(record, recallLogIds(dir));
       if (missing.length) {
         problems.push(

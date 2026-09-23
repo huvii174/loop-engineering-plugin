@@ -26,6 +26,12 @@ the verifier re-runs that grep itself.
 - Measured before check 9 existed: the 0.17.0 verifier already REJECTed every
   half-fix (0/3 on each of three variants, 9/9 naming the sibling). Check 9
   makes that behaviour a rule with a mechanism, not a new detection.
+- **`loop-record.mjs` refuses a record that owes a sweep and has none**: every
+  review fix, and any record whose `--criterion` names a `goal.md` block with
+  `Sites:` (whatever its `--kind`). The `Sweep:` line must classify at least
+  one `file:line` as fixed, held or not-this-class; a criterion block with two
+  `Sites:` lines, or a `--criterion` that matches no block, is refused rather
+  than guessed.
 - Check 9 after review: a review fix without `Sites:` is swept with its own
   grep, judged by shape rather than hit count; a design-time hit is matched by
   file and the text `Sites:` recorded for it (the template now takes the
