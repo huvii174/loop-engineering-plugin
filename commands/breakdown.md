@@ -108,12 +108,20 @@ writing anything.
 <one-paragraph epic statement + business outcome>
 
 ## Epic acceptance criteria (measurable)
-- [ ] <criterion — verifiable when the whole epic ships>
+- [ ] AC1 — <criterion, verifiable when the whole epic ships>
+      Done when: <the check an item's close re-runs for it>
+      Evidence: <surface → the command or file>
+      Sites: <the grep, when the rule is universal — shape in the loop-engine skill>
 
 ## Out of scope
 ## Assumptions (signed off)
 ## Open questions
 ```
+
+Each AC is re-run by `loop-close.mjs` at the close of every item whose backlog
+row claims it in `Epic criterion`, so write its `Done when:` as a check, not a
+wish. A legacy `epic.md` whose ACs have no such lines stays readable: the close
+re-runs the AC's text as written.
 
 **`.loop/epics/<epic-slug>/backlog.md`**
 ```markdown

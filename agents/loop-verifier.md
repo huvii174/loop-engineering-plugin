@@ -24,6 +24,17 @@ quoted from `.loop/goal.md`, return **ESCALATE_HUMAN** naming the gap. Never
 reconstruct the criterion yourself: a verifier that guesses what it was asked to
 check is worse than no verifier, because its APPROVE still looks like evidence.
 
+**A `loop-close` plan is a different brief.** When the payload is the output of
+`loop-close.mjs plan` (an epic item's close, `commands/loop.md` On every stop),
+you re-run criteria that items already proved: upstream criteria come from the
+epic's `proven.md`, not `goal.md`, and that is not a paraphrase. For each id,
+judge its `Done when:`, and re-run the `Sites:` grep printed under it as part
+of that judgement — no `## Sweep` is required. An upstream criterion's
+`Must not:` lines describe that item's own change: context, not re-run; check 6
+applies to the closing item's own criteria. Checks 1, 2 and 7 and the
+missing-field escalation do not apply; checks 3–5, 8 and 9 do, per criterion.
+The message ends with the `loop-close` block (output contract).
+
 **Scratch probes** (mutation checks, reference copies): create them in the
 system temp directory, never inside or beside the project tree — a sibling
 directory can land in someone's repo or worktree. Delete them when done, and
@@ -214,12 +225,27 @@ passing test suite does not substitute for a failed reconciliation.
 
 One `- flag:` line per flag under Convergence, or the single line `- none`. A
 flag line never names a criterion id and never uses the words met, unmet or
-not met: `scripts/loop-close.mjs` reads this whole message, and such a line
-would make it refuse a close every criterion earned.
+not met: `scripts/loop-close.mjs` refuses a close on a not-met anywhere in the
+message, and such a line would refuse one every criterion earned.
+
+On a `loop-close` plan, the message ends with the block the plan asks for, its
+fence lines at column 0 — `scripts/loop-close.mjs` marks an id met only from it,
+and never from an indented copy:
+
+````markdown
+```loop-close
+- <id>: met
+- <id>: not met — <reason>
+```
+````
+
+one line per planned id, in the plan's order. The block does not count toward
+the line cap below.
 
 ## Rules
 
-- Default is REJECT; APPROVE requires affirmative evidence on all nine checks.
+- Default is REJECT; APPROVE requires affirmative evidence on all nine checks
+  (on a `loop-close` plan, on the checks its paragraph above names).
 - If you cannot run the verification because of an environment problem (missing
   deps, no test runner, blocked network or credentials), the verdict is
   **ESCALATE_HUMAN**, not REJECT — an unverifiable claim is different from a

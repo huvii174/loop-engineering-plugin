@@ -269,9 +269,25 @@ budget policy in the loop-engine skill).
    starts, noisy signals, and exactly ONE concrete change to improve the next
    run (bounding it to one change is what makes it actually happen).
 3. **Epic bookkeeping:** if `.loop/active-epic` exists, resolve the slug and
-   work in `.loop/epics/<slug>/`: update this sub-goal's backlog row (`done`,
-   `stuck`, or back to `pending` per outcome), tick any epic acceptance
-   criteria in that epic's `epic.md` now met, and append this sub-goal's row
+   work in `.loop/epics/<slug>/`. When the goal is met, the close is code —
+   `scripts/loop-close.mjs` in this plugin, run from the project root:
+   1. `node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-close.mjs" plan --item <N>` lists
+      what must be re-run: every `done` upstream item's criteria from
+      `proven.md`, this item's own, and the epic ACs its row claims. If it
+      refuses because the backlog has no `Epic criterion` column, add that
+      column (each row's claimed ACs, or `—`) and run it again.
+   2. Spawn one fresh `loop-verifier` with the plan output verbatim (Template
+      N) — one re-run, no reviewer fan-out.
+   3. Write its final message verbatim to `.loop/evidence/item-<N>/close-verdict.md`.
+   4. `node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-close.mjs" close --item <N>
+      --verdict-file <that file> --agent-id <the verifier's agent id>`.
+   Exit `0` wrote `done` on the backlog row, the item's criteria into
+   `proven.md`, and the verdict onto its rollup row. Exit `1` wrote nothing:
+   the refusal is the next `review-fix` iteration of this goal; with no
+   iteration left, the budget policy in the loop-engine skill decides. Only
+   `close` writes `done`; the model writes `stuck` or back to `pending` on the
+   row when the loop ends another way, and never ticks an AC in `epic.md`.
+   Then append this sub-goal's row
    to `.loop/memory/epics/<slug>.md` — including **what it taught** and the
    **slice verdict** (`well-sliced` / `too coarse` / `too fine` /
    `wrong boundary`). That verdict is the only feedback `epic-planner` ever gets;

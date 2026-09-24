@@ -49,6 +49,25 @@ function verdictFrom(c, path, transform) {
   return out;
 }
 
+/**
+ * The test's own read of criterion blocks: from a `- [ ] C<n>` bullet to the line before the next bullet or
+ * heading, trailing blank lines dropped — keyed `item-<n>/<id>` under proven.md's `## Item N`, or `<prefix>/<id>` in a goal.
+ */
+function blocksOf(text, prefix) {
+  const out = new Map();
+  let item = prefix ?? null; let id = null; let lines = [];
+  const flush = () => { if (id && item !== null) out.set(`${prefix ? item : `item-${item}`}/${id}`, lines.join('\n').replace(/\s+$/, '')); id = null; lines = []; };
+  for (const line of text.split('\n')) {
+    const h = line.match(/^## Item (\d+)\s*$/);
+    if (h || /^#/.test(line)) { flush(); if (h && !prefix) item = h[1]; continue; }
+    const b = line.match(/^- \[[ xX]\] (C\d+[a-z]?)\b/);
+    if (b) { flush(); id = b[1]; }
+    if (id) lines.push(line);
+  }
+  flush();
+  return out;
+}
+
 function run(c, args) {
   try {
     const stdout = execFileSync('node', [SCRIPT, ...args, '--dir', c.loop], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -198,10 +217,12 @@ const CASES = [
     go: (c) => {
       const r = run(c, ['plan', '--item', '2']);
       const o = r.stdout;
-      const ok = o.includes('## item-1/C1\nDone when: `node src/total.mjs 2 3` prints `5` and exits 0')
-        && o.includes('## item-2/C1\nDone when: `node src/total.mjs --json 2 3` prints `{"total":5}` and exits 0')
+      const up = blocksOf(readFileSync(files(c)[1], 'utf8'));
+      const own = blocksOf(readFileSync(join(c.loop, 'goal.md'), 'utf8'), 'item-2');
+      const ok = o.includes(`## item-1/C1\n${up.get('item-1/C1')}\n`) && up.get('item-1/C1').includes('Must not:')
+        && o.includes(`## item-2/C1\n${own.get('item-2/C1')}\n`)
         && o.includes('## AC1\n- [ ] AC1 — `node src/total.mjs` adds its arguments.\n      Evidence: `node src/total.mjs 2 3` prints `5`.')
-        && o.includes('Report one line per id: `- <id>: met`');
+        && o.includes('End your message with one fenced block, its fences at column 0: a line ```loop-close');
       return { r, ok };
     },
   },
@@ -260,23 +281,15 @@ const CASES = [
       const acStart = epic.indexOf('- [ ] AC3');
       const acEnd = epic.indexOf('\n- [', acStart + 1);
       const ac3 = epic.slice(acStart, acEnd).replace(/\s+$/, '');
-      // Each id's OWN Done when, read independently from proven.md and goal.md — a plan that pairs an id with
-      // another criterion's text (an index shift) fails here even when every id is still listed.
-      const own = new Map();
-      let item = null; let crit = null;
-      for (const line of readFileSync(files(c)[1], 'utf8').split('\n')) {
-        const h = line.match(/^## Item (\d+)\s*$/); if (h) { item = h[1]; crit = null; }
-        const b = line.match(/^- \[[ xX]\] (C\d+[a-z]?)\b/); if (b) crit = b[1];
-        const d = line.match(/^\s*Done when:\s*(.*)$/); if (d && item !== null && crit) own.set(`item-${item}/${crit}`, d[1].trim());
-      }
-      const goal = readFileSync(join(c.loop, 'goal.md'), 'utf8');
-      const gd = goal.match(/^- \[[ xX]\] (C\d+[a-z]?)\b[\s\S]*?^\s*Done when:\s*(.*)$/m);
-      own.set(`item-3/${gd[1]}`, gd[2].trim());
+      // Each id's OWN whole block, read independently from proven.md and goal.md — a plan that pairs an id with
+      // another criterion's text (an index shift), or prints only its Done when, fails here.
+      const own = new Map([...blocksOf(readFileSync(files(c)[1], 'utf8')), ...blocksOf(readFileSync(join(c.loop, 'goal.md'), 'utf8'), 'item-3')]);
       const pairs = [...own.entries()].filter(([id]) => o.includes(`## ${id}\n`));
-      const ok = ['## item-0/C1', '## item-0/C2', '## item-0/C3', '## item-1/C2b', '## item-2/C3', '## item-3/C1']
-        .every((h) => o.includes(`${h}\nDone when: `))
-        && pairs.length >= 13 && pairs.every(([id, dw]) => o.includes(`## ${id}\nDone when: ${dw}\n`))
-        && new Set(pairs.map(([, dw]) => dw)).size === pairs.length
+      const sites = own.get('item-2/C3');
+      const ok = ['## item-0/C1', '## item-0/C2', '## item-0/C3', '## item-1/C2b', '## item-2/C3', '## item-3/C1'].every((h) => o.includes(`${h}\n- [`))
+        && pairs.length >= 13 && pairs.every(([id, block]) => o.includes(`## ${id}\n${block}\n`))
+        && new Set(pairs.map(([, block]) => block)).size === pairs.length
+        && /\n\s+Sites: `grep/.test(sites) && sites.split('\n').length > 4 && o.includes(`## item-2/C3\n${sites}\n`)
         && ac3.split('\n').length > 1 && o.includes(`## AC3\n${ac3}\n`);
       return { r, ok };
     },
@@ -522,7 +535,7 @@ const CASES = [
     ['- AC-1 not met', 'AC1 not met'],
     ['- item 1 / C1: not met', 'item-1/C1 not met'],
   ].map(([line, want]) => refusalCase(`a not-met in any shape blocks, even beside a met line: ${JSON.stringify(line)}`, DEMO,
-    (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace('### Evidence\n', `### Evidence\n${line}\n`))], want)),
+    (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace('```loop-close\n', `\`\`\`loop-close\n${line}\n`))], want)),
   refusalCase('"- Criterion \"…\" → met" without the colon is not the native shape', DEMO,
     (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace(/- item-2\/C1: met[^\n]*/,
       '- Criterion "`node src/total.mjs --json 2 3` prints `{"total":5}` and exits 0" → met'))], 'never marks item-2/C1'),
@@ -599,8 +612,8 @@ const CASES = [
     },
   },
   refusalCase('an unmatched native quote naming an id blocks that id', DEMO,
-    (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace('### Evidence\n',
-      '### Evidence\n- Criterion: "a text no criterion has, about AC1" → met\n'))], 'AC1 not met ("- Criterion: "a text no criterion has, about AC1'),
+    (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace('```loop-close\n',
+      '```loop-close\n- Criterion: "a text no criterion has, about AC1" → met\n'))], 'AC1 not met ("- Criterion: "a text no criterion has, about AC1'),
   refusalCase('an id named after a matched native line\'s "→ met" is blocked', DEMO,
     (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace(/- item-2\/C1: met[^\n]*/,
       '- Criterion: "`node src/total.mjs --json 2 3` prints `{"total":5}` and exits 0" → met; AC1 fails'))], 'AC1 not met ("- Criterion: '),
@@ -613,7 +626,7 @@ const CASES = [
   ].map(([line, want]) => refusalCase(`NEG matches inside words too (stricter): ${JSON.stringify(line)}`, DEMO,
     (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace(/- AC1: met[^\n]*/, line))], want)),
   refusalCase('a digit before an id still names it: "- 2AC1: not met" blocks AC1', DEMO,
-    (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace('### Evidence\n', '### Evidence\n- 2AC1: not met\n'))], 'AC1 not met ("- 2AC1'),
+    (c) => ['close', '--item', '2', '--verdict-file', verdictFrom(c, APPROVE, (t) => t.replace('```loop-close\n', '```loop-close\n- 2AC1: not met\n'))], 'AC1 not met ("- 2AC1'),
   {
     name: 'run through a symlinked path, close still runs (the main guard compares real paths)',
     src: DEMO, code: 0,
@@ -949,7 +962,7 @@ const CASES = [
       writeFileSync(g, readFileSync(g, 'utf8').replace('\n## Tier',
         '- [x] C2 exit code\n      Done when: `node src/total.mjs --json 2 3` exits 0\n      Must not: none\n\n- [x] C3 no stderr\n      Done when: `node src/total.mjs --json 2 3` writes nothing to stderr\n      Evidence: CLI output\n\n## Tier'));
       const [b0, p0, r0] = snap(c);
-      const v = verdictFrom(c, APPROVE, (t) => t + '- item-2/C2: met\n- item-2/C3: met\n');
+      const v = verdictFrom(c, APPROVE, (t) => t.replace('- AC1: met', '- item-2/C2: met\n- item-2/C3: met\n- AC1: met'));
       const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
       const [b1, p1, r1] = snap(c);
       const d = TODAY();
@@ -1008,6 +1021,157 @@ const CASES = [
       return { r, ok: statusCell(c, 2).startsWith('done') };
     },
   },
+  {
+    // item 3: commands/loop.md step 3 — a legacy backlog without the column refuses; adding it with `—` cells plans
+    name: 'a legacy backlog without an `Epic criterion` column refuses plan; with the column added as `—` cells it plans',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const b = files(c)[0];
+      const orig = readFileSync(b, 'utf8');
+      const drop = (t) => t.split('\n').map((l) => (l.trim().startsWith('|') ? l.split('|').filter((_, k) => k !== 6).join('|') : l)).join('\n');
+      writeFileSync(b, drop(orig));
+      const refused = run(c, ['plan', '--item', '2']);
+      const dashed = orig.split('\n').map((l) => (/^\| \d+ \|/.test(l) ? l.split('|').map((x, k) => (k === 6 ? ' — ' : x)).join('|') : l)).join('\n');
+      writeFileSync(b, dashed);
+      const r = run(c, ['plan', '--item', '2']);
+      return { r, ok: refused.code === 1 && refused.stderr.includes('no `Epic criterion` column') && !r.stdout.includes('## AC1') && r.stdout.includes('## item-2/C1') };
+    },
+  },
+  // item 3: the close records the verifier's agent id when given (optional — item 8's C8 keeps the documented usage)
+  {
+    name: '--agent-id is written into the rollup\'s closed: entry',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE, '--agent-id', 'a1b2-c3_d']);
+      return { r, ok: rollupCell(c, 2, 'outcome') === `closed: APPROVE (${TODAY()}; item-1/C1, item-2/C1, AC1; ${APPROVE}; agent a1b2-c3_d)` };
+    },
+  },
+  {
+    name: 'without --agent-id the closed: entry is written as before',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+      return { r, ok: rollupCell(c, 2, 'outcome') === `closed: APPROVE (${TODAY()}; item-1/C1, item-2/C1, AC1; ${APPROVE})` };
+    },
+  },
+  ...['../x', 'a b', 'a;b', ''].map((bad) => refusalCase(`--agent-id ${JSON.stringify(bad)} refuses, nothing written`, DEMO,
+    () => ['close', '--item', '2', '--verdict-file', APPROVE, '--agent-id', bad], '--agent-id must be a plain id')),
+  // item 3 (D-eci-034): a proven criterion tagged `Kind: dated — <reason>` is context, not a re-run
+  {
+    name: 'a dated proven criterion leaves the re-run list and is printed as context; close does not need it',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const pp = files(c)[1];
+      writeFileSync(pp, readFileSync(pp, 'utf8').replace('      Must not: a new dependency', '      Must not: a new dependency\n      Kind: dated — the demo checks it once'));
+      const plan = run(c, ['plan', '--item', '2']).stdout;
+      const v = verdictFrom(c, APPROVE, (t) => t.replace(/- item-1\/C1: met[^\n]*\n/, ''));
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      const ctx = plan.split('## Context — dated, not re-run')[1] ?? '';
+      return { r, ok: !plan.includes('## item-1/C1') && ctx.includes('item 1, C1:\n- [x] C1 the plain total') && ctx.includes('Kind: dated — the demo checks it once')
+        && statusCell(c, 2).startsWith('done') && !rollupCell(c, 2, 'outcome').includes('item-1/C1') };
+    },
+  },
+  {
+    name: '`Kind: re-run` is the same as no tag: the criterion stays in the re-run list',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const pp = files(c)[1];
+      writeFileSync(pp, readFileSync(pp, 'utf8').replace('      Must not: a new dependency', '      Must not: a new dependency\n      Kind: re-run'));
+      const r = run(c, ['plan', '--item', '2']);
+      return { r, ok: r.stdout.includes('## item-1/C1\n') && !r.stdout.includes('## Context') };
+    },
+  },
+  strict('a `Kind:` value other than `dated — <reason>` or `re-run`', P, (t) => t.replace('      Must not: a new dependency', '      Must not: a new dependency\n      Kind: old'), 'Kind: old', 'write `Kind: dated — <reason>` or `Kind: re-run`'),
+  strict('`Kind: dated` with no reason', P, (t) => t.replace('      Must not: a new dependency', '      Must not: a new dependency\n      Kind: dated'), 'Kind: dated', 'write `Kind: dated — <reason>`'),
+  strict('two `Kind:` lines in one proven criterion', P, (t) => t.replace('      Must not: a new dependency', '      Must not: a new dependency\n      Kind: re-run\n      Kind: dated — twice'), 'Kind: dated — twice', 'more than one `Kind:` line'),
+  strict('a `Kind:` line in goal.md', G, (t) => t.replace(/(      Done when:[^\n]*\n)/, '$1      Kind: dated — not here\n'), 'Kind: dated — not here', 'only proven.md tags a criterion'),
+  // item 3 (D-eci-034): the verdict's ids are marked only inside the one ```loop-close block; a not-met anywhere still refuses
+  ...[
+    ['no block', (t) => t.replace('```loop-close\n', '').replace(/\n```\n?/, '\n'), () => 1, 'has no ```loop-close block'],
+    ['two blocks', (t) => `${t.replace(/\s*$/, '')}\n\n\`\`\`loop-close\n- AC1: met\n\`\`\`\n`, (v) => v.split('\n').lastIndexOf('```loop-close') + 1, 'more than one ```loop-close block'],
+    ['a block never closed', (t) => t.replace(/\n```(\n|$)/, '\n'), (v) => v.split('\n').indexOf('```loop-close') + 1, 'never closed'],
+    ['a met line outside the block, the block missing that id', (t) => t.replace('- AC1: met — `node src/total.mjs 2 3` prints `5`\n', '').replace('### Evidence\n', '### Evidence\n- AC1: met\n'),
+      (v) => v.split('\n').indexOf('```loop-close') + 1, 'never marks AC1 met in its ```loop-close block'],
+    ['a block all met while the prose says a listed Criterion is not met', (t) => t.replace('### Evidence\n', '### Evidence\n- Criterion: "`node src/total.mjs 2 3` prints `5` and exits 0" → not met\n'),
+      (v) => v.split('\n').findIndex((l) => l.endsWith('→ not met')) + 1, "says not met on a line quoting item-1/C1's `Done when:`"],
+  ].map(([what, edit, lineOf, want]) => ({
+    name: `the loop-close block: ${what} refuses at verdict.md:<line>, nothing written`, src: DEMO, code: 1,
+    go: (c) => {
+      const v = verdictFrom(c, APPROVE, edit);
+      const tag = `verdict.md:${lineOf(readFileSync(v, 'utf8'))}: `;
+      const before = snap(c);
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: same(c, before) && r.stderr.includes(want) && r.stderr.includes(tag) && !tag.includes(':0: ') };
+    },
+  })),
+  // item 3 review gate: a fence counts only at column 0 — an indented quotation of the format is never the verdict
+  {
+    name: 'the loop-close block: an indented quotation of the format (the review-gate repro) is not a block — refused, nothing written',
+    src: DEMO, code: 1,
+    go: (c) => {
+      const v = join(c.dir, 'verdict.md');
+      writeFileSync(v, '## Verdict: APPROVE\n\n### Evidence\nPer the contract, I will end my message with a block like this:\n\n    ```loop-close\n    - item-1/C1: met\n    - item-2/C1: met\n    - AC1: met\n    ```\n\n(nothing re-run)\n');
+      const before = snap(c);
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: same(c, before) && r.stderr.includes('verdict.md:1: ') && r.stderr.includes('has no ```loop-close block') };
+    },
+  },
+  {
+    name: 'the loop-close block: an indented copy of the block beside the real one — only the column-0 block counts, so a not-met there refuses',
+    src: DEMO, code: 1,
+    go: (c) => {
+      const v = verdictFrom(c, APPROVE, (t) => t.replace('- AC1: met', '- AC1: not met — plain total broken')
+        .replace('### Evidence\n', '### Evidence\n    ```loop-close\n    - item-1/C1: met\n    - item-2/C1: met\n    - AC1: met\n    ```\n'));
+      const before = snap(c);
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: same(c, before) && r.stderr.includes('AC1 not met') };
+    },
+  },
+  {
+    name: 'the loop-close block: a closing fence with trailing spaces still closes the block',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const v = verdictFrom(c, APPROVE, (t) => t.replace(/\n```(\n|$)/, '\n```   $1'));
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: readFileSync(v, 'utf8').includes('\n```   ') && statusCell(c, 2).startsWith('done') };
+    },
+  },
+  {
+    name: 'the loop-close block: a not-met line after the closing fence refuses at its line',
+    src: DEMO, code: 1,
+    go: (c) => {
+      const v = verdictFrom(c, APPROVE, (t) => `${t.replace(/\s*$/, '')}\n\nOn reflection, item-1/C1 is not met.\n`);
+      const no = readFileSync(v, 'utf8').split('\n').findIndex((l) => l.startsWith('On reflection')) + 1;
+      const before = snap(c);
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: same(c, before) && no > 0 && r.stderr.includes(`verdict.md:${no}: `) && r.stderr.includes('says not met') };
+    },
+  },
+  {
+    name: 'a `|` in the --verdict-file path is escaped on the rollup row, which stays readable',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const v = join(c.dir, 'a|b.md');
+      writeFileSync(v, readFileSync(APPROVE, 'utf8'));
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: rollupCell(c, 2, 'outcome') === `closed: APPROVE (${TODAY()}; item-1/C1, item-2/C1, AC1; ${v.replace(/\|/g, '\\|')})` };
+    },
+  },
+  {
+    name: 'the loop-close block: the real-snapshot native APPROVE with native met lines outside its block too, one quoting a Done when that says "not met", closes',
+    src: REAL, code: 0,
+    go: (c) => {
+      const g = join(c.loop, 'goal.md');
+      writeFileSync(g, readFileSync(g, 'utf8').replace('## Success criteria (verifiable)\n', '## Success criteria (verifiable)\n- [x] C2 the refusal is named\n      Done when: `close` on a REJECT prints `not met` for each rejected id and exits 1\n\n'));
+      const inside = '- Criterion: "`close` on a REJECT prints `not met` for each rejected id and exits 1" → met\n';
+      const v = verdictFrom(c, NATIVE, (t) => {
+        const first = t.split('\n').find((l) => l.startsWith('- Criterion: "'));
+        return t.replace('```loop-close\n', `\`\`\`loop-close\n${inside}`).replace('### Evidence\n', `### Evidence\n${inside}${first}\n`);
+      });
+      const r = run(c, ['close', '--item', '3', '--verdict-file', v]);
+      return { r, ok: statusCell(c, 3).startsWith('done') && readFileSync(v, 'utf8').split('```loop-close')[0].includes('not met') };
+    },
+  },
   // C9 (D-eci-030): nothing that is done can leave the re-run list, and every listed text belongs to its id
   strict('a pending backlog row whose `#` is a word label (`one`)', B, (t) => t.replace(/\s*$/, '\n| one | extra | x | y | 1 | — | small | pending |\n'), '| one | extra', 'is a word label — backlog `#` cells are numbers only'),
   strict('a done row written `Done` under a word label', B, (t) => t.replace('| 1 | CLI total', '| one | CLI total').replace('done (item 1 closed)', 'Done (item 1 closed)'), '| one | CLI total', 'is done but its `#` is a word label'),
@@ -1033,7 +1197,7 @@ const CASES = [
       const r = run(c, ['plan', '--item', '2']);
       const b1 = blockOf('AC1');
       const b2 = blockOf('AC2');
-      return { r, ok: b1 !== b2 && b2.includes('AC2') && r.stdout.includes(`## AC1\n${b1}\n`) && r.stdout.includes(`## AC2\n${b2}`) };
+      return { r, ok: b1 !== b2 && b2.includes('AC2') && r.stdout.includes(`## AC1\n${b1}\n\n## AC2\n${b2}\n`) };
     },
   },
   {
@@ -1045,9 +1209,9 @@ const CASES = [
         '- [x] C2 exit code\n      Done when: `node src/total.mjs --json 2 3` exits 0\n\n- [x] C3 no stderr\n      Done when: `node src/total.mjs --json 2 3` writes nothing to stderr\n\n## Tier'));
       const r = run(c, ['plan', '--item', '2']);
       const o = r.stdout;
-      return { r, ok: o.includes('## item-2/C1\nDone when: `node src/total.mjs --json 2 3` prints `{"total":5}` and exits 0\n')
-        && o.includes('## item-2/C2\nDone when: `node src/total.mjs --json 2 3` exits 0\n')
-        && o.includes('## item-2/C3\nDone when: `node src/total.mjs --json 2 3` writes nothing to stderr\n') };
+      const own = blocksOf(readFileSync(g, 'utf8'), 'item-2');
+      return { r, ok: own.size === 3 && ['item-2/C1', 'item-2/C2', 'item-2/C3'].every((id) => o.includes(`## ${id}\n${own.get(id)}\n`))
+        && own.get('item-2/C2').includes('exits 0') && !own.get('item-2/C2').includes('stderr') };
     },
   },
   {

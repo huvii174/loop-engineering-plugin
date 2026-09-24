@@ -2,6 +2,7 @@
 
 ### Evidence
 - Command(s) run: (snapshot fixture — the loop-verifier output contract shape)
+```loop-close
 - Criterion: "`cd fixtures/two-writer && shasum -a 256 -c SHA256SUMS --quiet` exits 0 after the last spawn, and every SHA256SUMS line matches the hashes pinned in design.md" → met
 - Criterion: "`.loop/evidence/item-0/spawn-{1,2,3}/state.json` each have `history.length == 1`, `history[0].criterion == "C1"`, and `history[0].verdict` equal to the mapping (APPROVE→pass, REJECT→fail, ESCALATE_HUMAN→escalate) of the verdict line in the same directory's `verdict.md`, which is the spawned `loop-engineering:loop-verifier`'s final message verbatim" → met
 - Criterion: "rollup row 0 in `.loop/memory/epics/enforce-class-and-epic-integration.md` and the `Cond.` cell of backlog item 1 both state `k/3 APPROVE` with the same k as C2's evidence, and say whether any REJECT reason names `litellm`" → met
@@ -16,3 +17,4 @@
 - Criterion: "each hit of the `Sites:` grep below either names the `Sweep:` refusal or points at the one list in `skills/loop-engine/SKILL.md` that does" → met
 - Criterion: "`commands/loop.md` step 3 calls `loop-close.mjs close` and no longer tells the model to tick epic ACs" → met
 - AC3: met — per-item close re-runs upstream criteria by verifier
+```

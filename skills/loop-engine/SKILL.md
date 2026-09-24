@@ -394,7 +394,10 @@ never at the cap and never by the runner on its own. At the cap the breaker's
 `stopped-max-iterations` still ends the iterations. An item whose criteria are
 all verifier-APPROVED then still closes: its review gate runs, the gate's open
 findings become flags (the active epic's `epic.md` flags) instead of fix
-iterations, and `done` is written. An item with any criterion not APPROVED stays
+iterations, and the close step runs: `status: "done"` in `state.json`, and in
+an epic `loop-close.mjs` writes `done` on the backlog row — a refusal at the
+cap has no iteration left to fix it, so the loop stops `stuck` with the row
+`stuck`. An item with any criterion not APPROVED stays
 `stopped-max-iterations`.
 
 No-progress is the backstop for thrashing where every attempt fails

@@ -32,6 +32,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | script | `loop-breaker.mjs` | the circuit breaker, as code rather than as a prompt |
 | script | `loop-record.mjs` | the only writer of `state.json.history` — holds the verdict enum, reconciles the recall inbox, refuses rather than half-writes |
 | script | `loop-archive.mjs` | run/epic archiving, hygiene sweep, retention — deterministic, so the layout cannot drift (`run` · `epic` · `hygiene` · `prune`; all support `--dry-run`, `prune` is dry until `--yes`) |
+| script | `loop-close.mjs` | an epic item's close as code — `plan` lists what the close verifier re-runs (upstream `proven.md` criteria, the item's own, its claimed ACs; `Kind: dated` ones as context), `close` writes `done` only when the verifier's ```loop-close block marks every id met; tested on `fixtures/dogfood-epic/` (hash-pinned) by `test-loop-close.mjs` |
 | script | `memory-lint.mjs` | store health as code — `reach` (a body no trigger can reach), `budget`, `schema`; blocks the memory gate, runnable by hand during a pass |
 | script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree; `--solutions` assigns the stable `S-NNN` handles that let a slug be renamed |
 
