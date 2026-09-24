@@ -18,3 +18,9 @@ This repo *is* the plugin. Its `.loop/` is a live dogfood run, not fixtures.
   "What ships" table in `README.md` in the same change.
 - The version lives in `.claude-plugin/plugin.json` and is echoed from disk by
   `scripts/loop-breaker.mjs`; bump it together with a `CHANGELOG.md` entry.
+- **Before a release that changes `agents/loop-verifier.md` or
+  `agents/plan-critic.md`** is announced, install it and re-spawn the installed
+  agent on the fixture variants — `fixtures/sibling-sites/stage.sh half|full`; the three check-9
+  edits of the rendered `full` payload (the `src/ui/format.mjs:3` Sweep line
+  removed, the `Sites:` grep narrowed, that line marked `fixed`);
+  `fixtures/sites-critic/`. No script tests agent prompt text.

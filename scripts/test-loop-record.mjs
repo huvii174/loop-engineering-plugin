@@ -300,6 +300,15 @@ const CASES = [
     check: untouched,
   },
   {
+    // A required sweep written as "none" is silence in a longer form (D-eci-019).
+    name: 'the Sweep: none refusal says the hits go on the one line, separated by `;`',
+    fixture: { goal: GOAL, recallLog: LOG, record: RECORD + '\n- **Sweep:** none (nothing to sweep)' },
+    args: OK,
+    code: 1,
+    stderr: 'on that one line, hits separated by `;`',
+    check: untouched,
+  },
+  {
     // D-eci-004: Sites: none (<reason>) is the visible opt-out.
     name: 'a criterion with Sites: none (<reason>) owes no Sweep: line',
     fixture: { goal: GOAL, record: at('C3') },
@@ -346,7 +355,7 @@ const CASES = [
     fixture: { goal: GOAL, recallLog: LOG },
     args: ['--verdict', 'pass', '--kind', 'bookkeeping', '--intent', 'x', '--criteria-passed', '1', '--criterion', 'C1'],
     code: 1,
-    stderr: 'no `Sweep:` line',
+    stderr: 'One `Sweep:` line, its hits separated by `;`',
     check: untouched,
   },
   {

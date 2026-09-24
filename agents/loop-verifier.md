@@ -107,8 +107,8 @@ never modify the real project during verification.
    - a hit marked `fixed` still matches;
    - a `not-this-class` or `held` reason does not survive reading that line —
      judge it as you judge a recall dismissal;
-   - `## Sweep` is missing, or restates a grep that differs from the one you
-     ran.
+   - `## Sweep` is missing — a block that classifies no hit (`none`, `n/a`)
+     counts as missing — or restates a grep that differs from the one you ran.
 
    A `Sites:` grep that errors (exit 2) is **ESCALATE_HUMAN — Sites grep
    errored**, never a pass or a skip: the sweep could not run, and the defect
@@ -138,13 +138,8 @@ stays green, or a clause shown unmet, only on such a shape, is a **flag**: it
 goes under `### Flags` with a one-line repro and neither REJECTs nor counts
 against a criterion.
 
-It never relaxes what checks 1–9 demand as written. An unswept site is a
-REJECT wherever it lives; a cited test that cannot go red is still
-ESCALATE_HUMAN; a `Must not:` broken on any input is still broken.
-
-Without it a verifier never converges on a reader: one goal spent nine
-iterations, each REJECT finding one more malformed input of the same class,
-almost none of which occurred in any file.
+It never relaxes what checks 1–9 demand as written: checks 6, 8 and 9 bind on
+every input, constructed or not.
 
 ## Match the evidence to the surface
 
@@ -229,24 +224,19 @@ passing test suite does not substitute for a failed reconciliation.
   refused port / identical failure on unmodified code>
 ```
 
+A labeled escalation fills in only the proof its check names — check 8's the
+test and the mutation that left it green, check 9's the command, its exit code
+and its stderr; the four lines above are for the others.
+
 One `- flag:` line per flag under Convergence, or the single line `- none`. A
 flag line never names a criterion id and never uses the words met, unmet or
 not met: `scripts/loop-close.mjs` refuses a close on a not-met anywhere in the
 message, and such a line would refuse one every criterion earned.
 
-On a `loop-close` plan, the message ends with the block the plan asks for, its
-fence lines at column 0 — `scripts/loop-close.mjs` marks an id met only from it,
-and never from an indented copy:
-
-````markdown
-```loop-close
-- <id>: met
-- <id>: not met — <reason>
-```
-````
-
-one line per planned id, in the plan's order. The block does not count toward
-the line cap below.
+On a `loop-close` plan, the message ends with the block exactly as the plan's
+opening lines describe it — one line per planned id, in the plan's order,
+fences at column 0; `scripts/loop-close.mjs` marks an id met only from it, never
+from an indented copy. The block does not count toward the line cap below.
 
 ## Rules
 

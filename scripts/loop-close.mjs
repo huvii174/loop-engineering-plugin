@@ -677,7 +677,7 @@ function append(dir, args) {
   if (!backlog.rows.length) refuse(at(backlogFile, backlog.headerNo, 'the backlog has no rows — an epic gate follows closed items, and there are none.'));
   const open = backlog.rows.filter((r) => INTEGRATION.test(r.title) && !isDone(backlogFile, r));
   if (open.length) {
-    refuse(at(backlogFile, open[0].no, `integration row ${open[0].n} is not done — an epic has at most two gates (D-eci-005); ` +
+    refuse(at(backlogFile, open[0].no, `integration row ${open[0].n} is not done — an epic has at most two gates; ` +
       'a later gate\'s findings go to the user, not onto a second row.'));
   }
   const runPath = join(dir, 'run.json');

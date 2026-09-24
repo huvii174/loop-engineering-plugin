@@ -150,8 +150,7 @@ suite of the file it changed. Every mutation check, every suite, and the
 before/after red-green check of every test (flip the expected result and watch
 the test fail) run once per goal, on the final files, before the verifier that
 claims the last criterion — and again only if a later iteration changes those
-files. Re-running all of it on every iteration re-proves what did not move; on
-one ten-iteration goal it was most of the cost.
+files. Re-running all of it on every iteration re-proves what did not move.
 
 ## Step 6 — Then, and only then, `done`
 

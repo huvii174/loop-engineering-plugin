@@ -243,8 +243,9 @@ a failed approach.
 - **Delegated:** <agent> — <task> — <outcome>   (or "none")
 - **Verification:** <exact command(s) the verifier ran>
 - **Evidence:** <trimmed command output proving the verdict>
-- **Sweep:** <the payload's `## Sweep` block — when a targeted criterion
-  carries `Sites:` or the iteration is a review fix; see Sites and Sweep below>
+- **Sweep:** <the payload's `## Sweep` on this one line, hits separated by `;` —
+  when a targeted criterion carries `Sites:` or the iteration is a review fix;
+  see Sites and Sweep below>
 - **Verdict:** pass | fail | escalate — <reason>
 - **Learning:** <one line for memory, or "none">
 - **Next:** <what the next iteration should do>
@@ -294,9 +295,10 @@ can enumerate the sites, write `Sites: none (<reason>)` instead: the omission
 stays visible, the tenth man attacks the reason, and the criterion is exempt
 from the sweep.
 
-**`## Sweep`** is a block in the verifier payload, carried onto the record's
-`Sweep:` line. It is required when a targeted criterion carries `Sites:`, and on
-every review fix — a review fix on a criterion without `Sites:` writes its own
+**`## Sweep`** is a block in the verifier payload, written onto the record's one
+`Sweep:` line with its hits separated by `;` — the recorder reads that line
+only. It is required when a targeted criterion carries `Sites:`, and on every
+review fix — a review fix on a criterion without `Sites:` writes its own
 grep for the defect's shape.
 
 ```markdown
@@ -309,8 +311,7 @@ Sites: `<the grep: verbatim from goal.md, or the review fix's own>`
 
 The grep's live hits and the design-time hits each get one line. A design-time
 hit that has moved is written at its live number, with the design number in
-its reason (`was :160`); the verifier matches it by file and the text `Sites:`
-recorded for it.
+its reason (`was :160`); how the verifier matches it is check 9's.
 `fixed | held | not-this-class` is the whole vocabulary, and each carries its
 reason. The verifier re-runs the grep itself (its check 9): from `goal.md`
 when the criterion carries `Sites:`, never from the payload; from the payload

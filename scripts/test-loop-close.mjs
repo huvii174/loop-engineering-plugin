@@ -1495,7 +1495,7 @@ const CASES = [
       },
       ...[['`integration point`', true], ['**integration point**', true], ['integration point, also X', false]].map(([cellText, announces]) => ({
         name: `close on a row whose Cond. reads ${cellText} ${announces ? 'announces the point (markup stripped)' : 'is not the point (exact match only)'}`,
-        item6: true, src: DEMO, code: 0,
+        src: DEMO, code: 0,
         go: (c) => { const b = point(c); writeFileSync(b, readFileSync(b, 'utf8').replace('| integration point |', `| ${cellText} |`));
           const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
           return { r, ok: r.stdout.includes(POINT_LINE) === announces && r.stdout.startsWith('closed item 2 — ') }; },
@@ -1507,7 +1507,7 @@ const CASES = [
         return [
           {
             name: "append follows run.json's order, not the table's: order [1, 3, 2] with rows 1–3 done → row 4 after 2, Depends on 2",
-            item6: true, src: DEMO, code: 0,
+            src: DEMO, code: 0,
             go: (c) => { const b = point(c); run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
               writeFileSync(b, readFileSync(b, 'utf8').replace(/(\| 3 \| CSV output[^\n]*\| )pending \|/, '$1done |'));
               order(c, [1, 3, 2]); const r = run(c, ['append', '--findings-file', f(c)]);
@@ -1515,21 +1515,21 @@ const CASES = [
           },
           {
             name: 'append with no run.json follows the table: row 3 pending → Depends on 2, the last done row',
-            item6: true, src: DEMO, code: 0,
+            src: DEMO, code: 0,
             go: (c) => { const b = point(c); run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
               const r = run(c, ['append', '--findings-file', f(c)]);
               return { r, ok: row4(b)[5] === '2' && !existsSync(join(c.loop, 'run.json')) }; },
           },
           {
             name: 'append on a backlog with no rows refuses at its header, writing nothing',
-            item6: true, src: DEMO, code: 1,
+            src: DEMO, code: 1,
             go: (c) => { const b = files(c)[0]; writeFileSync(b, '# Backlog\n| # | Sub-goal | Status |\n|---|---|---|\n'); const before = snap(c);
               const r = run(c, ['append', '--findings-file', f(c)]);
               return { r, ok: same(c, before) && r.stderr.includes('backlog.md:2: the backlog has no rows') }; },
           },
           {
             name: 'append with an empty run.json order depends on the table\'s last row and puts the id in the order',
-            item6: true, src: DEMO, code: 0,
+            src: DEMO, code: 0,
             go: (c) => { const b = point(c); order(c, []); const r = run(c, ['append', '--findings-file', f(c)]);
               return { r, ok: row4(b)[5] === '3' && JSON.stringify(rj(c)) === '[4]' && !r.stdout.includes('undefined') }; },
           },
@@ -1550,6 +1550,51 @@ const CASES = [
           const standing = runStanding(c.dir);
           return { r, ok: JSON.stringify(JSON.parse(readFileSync(join(c.loop, 'run.json'), 'utf8')).order) === '[1,2,4,3]'
             && cells[5] === '2' && cells[2].startsWith('integration — ') && standing && standing.next && standing.next.id === 4 };
+        },
+      },
+    ];
+  })(),
+  // item 7: verdict-reader shapes pinned (epic flags, item 8's gate) and append on a backlog with a `Cond.` column
+  ...(() => {
+    const NATIVE_DW = '`node src/total.mjs --json 2 3` prints `{"total":5}` and exits 0';
+    const nativeFor = (t, line) => t.replace('- item-2/C1: met — `node src/total.mjs --json 2 3` prints `{"total":5}`, exit 0', line);
+    return [
+      {
+        name: 'a native `Criterion: "<Done when>" → met` line whose quoted Done when holds `?` closes (no false not-met)',
+        src: DEMO, code: 0,
+        go: (c) => {
+          const g = join(c.loop, 'goal.md');
+          writeFileSync(g, readFileSync(g, 'utf8').replace(NATIVE_DW, '`node src/total.mjs --json 2 3` prints `{"total":5}` (why not `5`? JSON) and exits 0'));
+          const v = verdictFrom(c, APPROVE, (t) => nativeFor(t, '- Criterion: "`node src/total.mjs --json 2 3` prints `{"total":5}` (why not `5`? JSON) and exits 0" → met'));
+          const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+          return { r, ok: statusCell(c, 2).startsWith('done') };
+        },
+      },
+      {
+        name: 'a `## Verdict: **APPROVE**` heading (bold) is read as APPROVE',
+        src: DEMO, code: 0,
+        go: (c) => { const v = verdictFrom(c, APPROVE, (t) => t.replace('## Verdict: APPROVE', '## Verdict: **APPROVE**'));
+          const r = run(c, ['close', '--item', '2', '--verdict-file', v]); return { r, ok: statusCell(c, 2).startsWith('done') }; },
+      },
+      {
+        name: 'a lowercase `criterion: "<Done when>" → met` line is not the native shape — the id stays unmarked, nothing written',
+        src: DEMO, code: 1,
+        go: (c) => { const v = verdictFrom(c, APPROVE, (t) => nativeFor(t, `- criterion: "${NATIVE_DW}" → met`)); const before = snap(c);
+          const r = run(c, ['close', '--item', '2', '--verdict-file', v]); return { r, ok: same(c, before) && r.stderr.includes('item-2/C1') }; },
+      },
+      {
+        name: "append on a backlog with a `Cond.` column writes `—` in the new row's Cond. cell",
+        src: DEMO, code: 0,
+        go: (c) => {
+          const b = files(c)[0];
+          writeFileSync(b, readFileSync(b, 'utf8').split('\n').map((l) => (l.trim().startsWith('|') ? (/^\|-/.test(l) ? l.replace(/\|$/, '|-------|') : l.replace(/\| ([^|]*) \|$/, (m, st) => `| ${st === 'Status' ? 'Cond.' : '—'} | ${st} |`)) : l)).join('\n'));
+          run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          const f = join(c.dir, 'f.md'); writeFileSync(f, '```loop-findings\n- major: x — a.mjs:1\n```\n');
+          const r = run(c, ['append', '--findings-file', f]);
+          const rows = readFileSync(b, 'utf8').split('\n').filter((l) => l.trim().startsWith('|'));
+          const split = (l) => l.trim().split(/(?<!\\)\|/).map((x) => x.trim());
+          const head = split(rows[0]); const row3 = split(rows.filter((l) => l.startsWith('| 3 |'))[0] ?? '');
+          return { r, ok: head.includes('Cond.') && split(rows[1]).length === head.length && row3[head.indexOf('Cond.')] === '—' && row3[head.indexOf('Status')] === 'pending' };
         },
       },
     ];

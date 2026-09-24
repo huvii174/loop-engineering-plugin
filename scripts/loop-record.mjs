@@ -261,7 +261,7 @@ function sweepProblem(record, rp, need) {
   const line = SWEEP_LINE.exec(record);
   const value = line ? line[1].replace(/^[\s*]+/, '').trim() : '';
   if (!line) {
-    return `${rp} has no \`Sweep:\` line — required because ${need.why}. One line per grep hit, ` +
+    return `${rp} has no \`Sweep:\` line — required because ${need.why}. One \`Sweep:\` line, its hits separated by \`;\` — ` +
       'shape in the loop-engine skill, "Sites and Sweep".';
   }
   // A sweep classifies hits: at least one `file:line` followed, in the same
@@ -269,7 +269,7 @@ function sweepProblem(record, rp, need) {
   // `TBD — nothing fixed yet`) or a placeholder (`n/a`, "none") names no hit.
   if (!CLASSIFIED_HIT.test(value)) {
     return `${rp} says \`Sweep: ${JSON.stringify(value || '(empty)').slice(1, -1)}\` but a sweep is required because ` +
-      `${need.why} — account for each grep hit as fixed, held or not-this-class.`;
+      `${need.why} — account for each grep hit as fixed, held or not-this-class, on that one line, hits separated by \`;\`.`;
   }
   return null;
 }

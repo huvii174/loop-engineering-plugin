@@ -145,9 +145,8 @@ project has no `.loop/`, **fail open** on any error, and can be disabled with
 Deliberately NOT hooks: memory *distillation* (needs judgment — the ad-hoc nudge
 collects raw one-liners, but only `/loop-engineering:memory` turns scratch into
 durable entries) and self-evaluation (the breaker already runs as code inside the
-loop). Verify with `node scripts/test-hooks.mjs` (122 checks); the scripts have
-their own suites — `test-loop-breaker.mjs` (42), `test-loop-archive.mjs` (49),
-`test-migrate-memory.mjs` (87).
+loop). Verify with `node scripts/test-hooks.mjs` (129 checks); the scripts have
+their own suites — `test-loop-archive.mjs` (74), `test-migrate-memory.mjs` (92).
 
 ## Commands
 

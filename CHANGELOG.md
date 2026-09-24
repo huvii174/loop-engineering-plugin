@@ -1,9 +1,6 @@
 # Changelog
 
-## 0.18.1 — in progress (epic enforce-class-and-epic-integration)
-
-One entry for the whole epic; the patch number moves each time the epic needs
-the plugin reinstalled to measure itself (D-eci-017, D-eci-018).
+## 0.18.2 — 2026-09-25 (epic enforce-class-and-epic-integration)
 
 **Fix the class, not the instance — as a check the verifier runs.** A rule
 that lives only in memory is recalled, marked applied, and skipped at the
@@ -11,9 +8,9 @@ sibling site next to the fix. A universal criterion now names its sites, and
 the verifier re-runs that grep itself.
 
 - **`Sites:`** under a criterion in `goal.md` — one grep plus the hits seen at
-  design, or `Sites: none (<reason>)`; **`## Sweep`** in the verifier payload
-  classifies every hit `fixed`, `held` or `not-this-class`, each with a reason.
-  One definition, in the loop-engine skill ("Sites and Sweep").
+  design; **`## Sweep`** in the verifier payload classifies every hit. The
+  shape and the vocabulary live once, in the loop-engine skill ("Sites and
+  Sweep").
 - **`loop-verifier` check 9** — reads `Sites:` from `goal.md`, runs the grep,
   and REJECTs an unaccounted hit, a `fixed` hit still present, a reason that
   does not hold, or a restated grep that differs. Output gains `Sites swept:`.
@@ -24,21 +21,64 @@ the verifier re-runs that grep itself.
   module, a different idiom, a 12-file rename in the same diff, a display-only
   noise hit) with a full-fix control.
 - Measured before check 9 existed: the 0.17.0 verifier already REJECTed every
-  half-fix (0/3 on each of three variants, 9/9 naming the sibling). Check 9
-  makes that behaviour a rule with a mechanism, not a new detection.
+  half-fix. Check 9 makes that behaviour a rule with a mechanism, not a new
+  detection.
 - **`loop-record.mjs` refuses a record that owes a sweep and has none**: every
   review fix, and any record whose `--criterion` names a `goal.md` block with
   `Sites:` (whatever its `--kind`). The `Sweep:` line must classify at least
-  one `file:line` as fixed, held or not-this-class; a criterion block with two
-  `Sites:` lines, or a `--criterion` that matches no block, is refused rather
-  than guessed.
+  one `file:line` (loop-engine skill, "Sites and Sweep"); a criterion block
+  with two `Sites:` lines, or a `--criterion` that matches no block, is refused
+  rather than guessed.
 - Check 9 after review: a review fix without `Sites:` is swept with its own
-  grep, judged by shape rather than hit count; a design-time hit is matched by
-  file and the text `Sites:` recorded for it (the template now takes the
-  grep's `-n` output), so a hit moved by edits above it is not a false REJECT.
-- The `Sites swept:` output line carries the grep command in a template slot:
-  with the command only described in prose, 2 of 3 check-9 verdicts left it
-  under "Commands run" instead.
+  grep, judged by shape rather than hit count; a design-time hit that moved is
+  matched as check 9 says (the template now takes the grep's `-n` output), so
+  edits above it cause no false REJECT.
+- The `Sites swept:` output line carries the grep command in a template slot,
+  so verdicts put it there rather than under "Commands run".
+
+**An epic re-proves its items at every close, and reviews them together.**
+Ticking an epic's checkboxes was the model's word; a later item could break an
+earlier one's proven criterion and nothing re-ran it.
+
+- **`scripts/loop-close.mjs`** — the per-item close as code. `plan --item N`
+  lists what a fresh verifier re-runs: every done item's criteria from the
+  epic's `proven.md` (whole blocks, `Sites:` greps included), the item's own,
+  and the ACs its row claims. `close` writes `done`, the proven block and the
+  rollup verdict only when the verifier's ```loop-close block (fences at column
+  0) marks every id met; a not-met anywhere refuses, and a refusal writes
+  nothing. Strict readers refuse an unclassified line at `<file>:<line>`.
+  `/loop-engineering:loop` runs it at every epic item's stop (plan → one fresh
+  verifier → `close`; a refusal is the next review-fix iteration), and
+  `breakdown`'s AC template gives each epic AC a `Done when:` to re-run.
+- **`Kind: dated`** in `proven.md` — a criterion bound to a moment (an archived
+  design, a spawn-time condition) is printed as context, not re-run. An AC also
+  claimed by a later, not-done row is re-run only at the last claimer's close.
+- **`plan-critic` attack 8** re-runs every `Sites:` grep at the design gate; a
+  hit missing from the list, an erroring grep or a second `Sites:` line is a
+  REVISE. A universal `Done when:`, or `Sites:` hits in two or more modules,
+  lifts the tier to at least `medium`.
+- **The epic gate** (loop-review skill) — once the last item closes, fresh
+  reviewers look across items only: a sibling site one item fixed and another
+  left, logic drifting apart, an invariant a later item broke. Confirmed
+  findings become one numbered `integration — ` row (`loop-close.mjs append`)
+  on the backlog and `run.json`'s order, run before the retro;
+  `loop-record.mjs --epic-gate` records it.
+- **The integration point** — `epic-planner` may mark one row `integration
+  point` in `Cond.`; the same gate runs when it closes, and
+  `loop-archive.mjs run` refuses to file that run until `--epic-gate` is
+  recorded. Its integration row runs next.
+- **The verifier converges** — a finding on a shape that occurs only in a
+  constructed input is a `- flag:` line, not a REJECT (loop-verifier,
+  Convergence); a reviewer finding may carry a `Repro:`, and one that does is
+  confirmed or dropped by running it (the rest still go to a refuter); a goal
+  runs its full evidence battery once, not every iteration.
+- **Budget policy** (loop-engine skill) — `max_iterations` is raised once, by
+  the user only; at the cap a met item still closes through its review gate.
+- **`hooks/agent-track.mjs`** (SubagentStart/Stop) — `run-gate` stays silent
+  while one of the session's own subagents is running, instead of nudging
+  through every wait. The hooks now see backlog row `0`, and read a Status as
+  done only when `done` opens it — `✅ done` and `[x] done` are not done, as
+  in `loop-close.mjs`.
 
 ## 0.17.0 — 2026-09-22
 
