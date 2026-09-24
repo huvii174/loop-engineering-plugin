@@ -129,6 +129,9 @@ the artifacts below. Two extra rules first:
       Behavior→focused test; CLI or model-visible text→transcript/snapshot;
       docs/config→the generator or format gate; published paths→build + smoke;
       deletion→proof of absence. Routing table in the loop-verifier agent>
+      Sites: <required when the criterion's rule is universal: its grep with
+      the design-time hit list, or `none (<reason>)` — shape in the loop-engine
+      skill, Sites and Sweep; the tenth man re-runs it>
       Must not: <the boundary that must hold WHILE meeting it — e.g. "no test
       deleted or weakened, coverage not lowered". A done-criterion without a
       boundary is a license to cheat>

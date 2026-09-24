@@ -58,7 +58,8 @@ verified independently.
    which routes how much process it pays downstream (design-gate depth,
    tenth-man, review dimensions; table in the loop-engine skill). A config
    change must not pay for a schema migration. When torn between two tiers,
-   round up.
+   round up. When a seed names a universal rule, or sites in two or more
+   modules, the Sites rounding in the loop-engine skill's tier routing applies.
 
 ## Output contract (raw markdown — your final message IS the deliverable)
 

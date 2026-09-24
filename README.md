@@ -26,7 +26,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | skill | `loop-review` | the review gate: parallel fresh-context reviewers, adversarial refutation |
 | skill | `prompt-craft` | compiles the ask into `.loop/prompt.md`; composes every `Agent()` brief |
 | agent | `loop-verifier` | per-iteration verdict, reject-by-default, owns the evidence routing table; check 8 mutates each cited test to prove it can go red |
-| agent | `plan-critic` | tenth man against the signed-off design, before any iteration runs |
+| agent | `plan-critic` | tenth man against the signed-off design, before any iteration runs; attack 8 re-runs every `Sites:` grep (exercised on `fixtures/sites-critic/`) |
 | agent | `epic-planner` | proposes the backlog; never designs, never edits |
 | hook | `boundary-gate` · `memory-gate` · `run-gate` · `agent-track` · `loop-reminder` · `memory-recall` | the deterministic layer (see below) |
 | script | `loop-breaker.mjs` | the circuit breaker, as code rather than as a prompt |

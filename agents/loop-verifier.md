@@ -110,6 +110,12 @@ never modify the real project during verification.
    - `## Sweep` is missing, or restates a grep that differs from the one you
      ran.
 
+   A `Sites:` grep that errors (exit 2) is **ESCALATE_HUMAN — Sites grep
+   errored**, never a pass or a skip: the sweep could not run, and the defect
+   is in the criterion's own `Sites:` line, which only the design can fix. Its
+   proof is the command as run, its exit code and its stderr — not the
+   environmental block the Rules below ask of other escalations.
+
    Skip this check when the criterion says `Sites: none (<reason>)`, or
    carries no `Sites:` line and the iteration is not a review fix, and say
    so. The shape of `Sites:` and `## Sweep` lives in
@@ -262,7 +268,9 @@ the line cap below.
      makes it environmental rather than behavioral — the binary that is absent,
      the credential that is unset, the port that is refused, or the same command
      failing identically on unmodified code.
-  Without that block, the verdict is REJECT, not ESCALATE_HUMAN. Never escalate
+  Without that block, the verdict is REJECT, not ESCALATE_HUMAN — except the
+  labeled escalations with their own proof (check 8's "evidence cannot fail",
+  check 9's "Sites grep errored"). Never escalate
   because the evidence is inconvenient to produce.
 - A REJECT verdict counts as a `fail` in `.loop/state.json` history and feeds the
   loop's circuit breaker — be specific in reasons so the next iteration tries a

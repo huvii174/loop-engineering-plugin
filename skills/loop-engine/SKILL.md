@@ -281,7 +281,13 @@ verifier re-runs does not.
         <file:line:matched text>
 ```
 
-One grep per criterion; a second grep is a second criterion. The hit list is
+One grep per criterion, written once: a criterion carries at most one `Sites:`
+line, and a second grep is a second criterion. The grep is one plain command —
+no `;`, `&&`, `$(`, backticks, or pipe into another command (`|` inside a quoted
+pattern is regex alternation and stays).
+A **module** is the first two path segments of a hit's path when it has more
+than two, else its first (`commands/`, `skills/loop-engine/`, `src/billing/`);
+the tier routing below rounds on it. The hit list is
 the grep's own `-n` output, pasted, so each hit keeps its text; it is what the
 design saw, and a hit that appears later is visible as new. When no grep
 can enumerate the sites, write `Sites: none (<reason>)` instead: the omission
@@ -459,6 +465,14 @@ One line of process discipline: a config tweak must not pay the cost of a schema
 migration — and a schema migration must never sneak through on a config tweak's
 paperwork. Tier is recorded in `state.json` (`"tier": "medium"`) and in the
 backlog row; disputes round up.
+
+**Sites round the tier up.** When `epic-planner` proposes a row, or a standalone
+design gate self-assesses, a goal with a criterion whose `Sites:` hits span two
+or more modules, or whose `Done when:` is universal (both defined in Sites and
+Sweep, above), is at least `medium`; `Sites: none (<reason>)` counts as carrying
+`Sites:`. A `trivial` or `small` goal with no `Sites:` line keeps its tier, and a
+backlog row already planned keeps its tier — a rule change never re-prices work
+already signed off.
 
 Every stop — including failure stops — triggers the memory compounding step
 (`loop-engineering:loop-memory` skill), a **post-run critique** (false starts, noise, and exactly

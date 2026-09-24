@@ -1,0 +1,9 @@
+5092d1a0cb7174333757e63ca3d03c0a0efc84dfe7151593002a1d6f1b6699de  ./.loop/design.md
+1a2ba1f2f69e89cee694832791045eda8b34b01881b64c145909cf6411ef92ad  ./.loop/goal-missing-hit.md
+a44dad7e579ff2ab13da146e7c0ea728007d8a224eb2419f9ca970b75d0a9a9a  ./.loop/goal-none.md
+be8ee9875830ca7ab67d5f0ca9a921979c495aa353528dcc567da46951d5f733  ./.loop/prompt.md
+10a63efa03100f4a8ac7b3222da233a18b8a51a873406dd3a3c1832f76f8f6d2  ./README.md
+af09e5308b4f11bb25e9c9e6e30a454ee4b2d223be77b355526df9f5f8b1c772  ./src/cart/line.mjs
+4a6fe224ce7fc906050ef0cabdb59fdacd64f1ab1020433f35dc798b7b152d4d  ./src/cart/total.mjs
+fe4000a85cfad4b692bcc31819a8b237fdedc2b272c5a364a03db969271b903d  ./src/invoice/summary.mjs
+68c3509ed2f00a55bf78d004af61af8776257227a7a8fc21ddd2a3291ac612cd  ./src/money.mjs

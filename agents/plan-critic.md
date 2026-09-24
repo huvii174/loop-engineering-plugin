@@ -64,6 +64,14 @@ Attack, in order of iteration-burn:
    resting on agent-authored tests when an external anchor exists (golden
    sample, reference output) is standing on the weakest rung available. Both
    are findings.
+8. **Every `Sites:` grep, re-run.** For each criterion in `goal.md` that
+   carries `Sites:`, run its grep at the project root yourself and compare with
+   the recorded hit list (shape and module rule: the loop-engine skill, Sites
+   and Sweep). A hit the list omits is a finding — quote its `file:line:text`.
+   A grep that errors (exit 2), breaks the shape rule, or a second `Sites:` line
+   under one criterion is a finding. For `Sites: none (<reason>)`, attack the
+   reason: find the site it says cannot exist. A universal `Done when:` with no
+   `Sites:` line at all is a finding too — the design gate owes one.
 
 ## Honesty guard
 
@@ -82,6 +90,7 @@ it survived is worth more than one that never attacked.
 
 ### Attacks mounted
 1. <assumption/criterion/decomposition attacked> — <evidence checked> — SURVIVED | FAILED
+Sites (attack 8): <grep as run> → <n> hits | none (<reason>) — <what it found> — SURVIVED | FAILED
 
 ### If REVISE — findings (numbered, severity-ordered)
 - **Finding N:** <what is wrong>
