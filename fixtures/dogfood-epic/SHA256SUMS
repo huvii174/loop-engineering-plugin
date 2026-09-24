@@ -1,0 +1,16 @@
+eb9c26baee47f19e4993a77bca936d0ff09e355a82d3db79bf154ebff1a80604  ./.loop/active-epic
+146a2c59ea55332770e08e079f5e001625cd26110c85fab1739c19825e838621  ./.loop/epics/demo/backlog.md
+40414d67aea16e494a5086a756c4c627a5baa190db884a345bd4127be3786d12  ./.loop/epics/demo/epic.md
+b337bba3d35b73d203fe96fd70290c91e17e13fe19acaf1255f790a1da12f75c  ./.loop/epics/demo/proven.md
+f3b92045722cddab521af68cf43b388f57e118973e84e7bc326a4256b57faf0b  ./.loop/goal.md
+19dceba0e2a968bfa578701137e8fc876125080761d225bf0cb8383bf332ee33  ./.loop/memory/epics/demo.md
+9760e4138dc546fda88cc4e13f1599d48bcd956473582c8ff51af7bec8172c74  ./README.md
+aaf6fa9add23724d398c31e127c2c47c594246d9aea7aab6922b695dbbb270fd  ./real-snapshot/.loop/active-epic
+f23be087e205dcb4233a353a55b2b779a9390289e89a59ad749d459272caf4cf  ./real-snapshot/.loop/epics/enforce-class-and-epic-integration/backlog.md
+f1473cdc9af1d130c7d86384eb1bed5350e9a54ada24ff4ad8ae6c7388cbe76a  ./real-snapshot/.loop/epics/enforce-class-and-epic-integration/epic.md
+70b3a06f5bc4ce3dc605f4159b696a34f8e017fc2c33968bbc6a6c75f99b2e04  ./real-snapshot/.loop/epics/enforce-class-and-epic-integration/proven.md
+095898cc81e1c6d475fb9c88280cf92c901f39dc637953e03708adc9b38670a7  ./real-snapshot/.loop/goal.md
+bf656ba7fe0ef4c7bcd9512dc99affc6225bd837e454b7cfab34e0624176df6f  ./real-snapshot/.loop/memory/epics/enforce-class-and-epic-integration.md
+a35ba1d1a44c6fd0d53d6fbf4bbd99212571bd8c1ac5b79a0b03d30831a8f615  ./real-snapshot/verdicts/item3-approve-native.md
+277ce3e378b1be300a9d99f8a8f22776e8d837a316d5f6f4e7c4b50bd4ada190  ./verdicts/approve.md
+8edbbbe58847991c5d374edf9777cf7327cd3d1183a9e0aa35fe3f41f42bb226  ./verdicts/reject.md
