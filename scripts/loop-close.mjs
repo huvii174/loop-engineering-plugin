@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 /** The flags loop-close takes; anything else, a flag given twice, or a value-taking flag with no value refuses. */
-const FLAGS = { item: 'value', dir: 'value', 'verdict-file': 'value', 'agent-id': 'value', help: 'bool' };
+const FLAGS = { item: 'value', dir: 'value', 'verdict-file': 'value', 'agent-id': 'value', 'findings-file': 'value', help: 'bool' };
 
 function parseArgs(argv) {
   const args = argv.slice(2);
@@ -63,6 +63,7 @@ const USAGE = `loop-close — the per-item close of an epic
   plan  --item <n> [--dir .loop]                        list what the verifier re-runs
   close --item <n> --verdict-file <path> [--dir .loop]  write done on a full APPROVE
         [--agent-id <id>]                               the verifier's agent id, recorded on the rollup
+  append --findings-file <path> [--dir .loop]           the epic gate's findings → one integration row
 `;
 
 function readIfExists(p) {
@@ -200,7 +201,7 @@ function readBacklog(file, text) {
       refuse(at(file, r.no, `backlog row \`${cell}\` has a \`#\` that is a word label — backlog \`#\` cells are numbers only (an integration row gets the next free number).`));
     }
   }
-  return { lines: reg.lines, cols, rows, headerNo: table.header.no };
+  return { lines: reg.lines, cols, rows, headerNo: table.header.no, header: table.header.text, last: table.last };
 }
 
 /**
@@ -369,7 +370,8 @@ const dupes = (values) => [...new Set(values.filter((v, i) => values.indexOf(v) 
 
 // ------------------------------------------------------------------ the list
 
-function load(dir, item) {
+/** The active epic and its backlog, read strictly — shared by `plan`/`close` and `append`. */
+function epicBacklog(dir) {
   const slug = (readIfExists(join(dir, 'active-epic')) ?? '').trim();
   if (!slug) refuse(`no epic: ${join(dir, 'active-epic')} is missing or empty.`);
   if (!SLUG.test(slug)) refuse(`${join(dir, 'active-epic')} names ${JSON.stringify(slug)}, which is not a single directory name under epics/.`);
@@ -381,6 +383,11 @@ function load(dir, item) {
   if (!backlog) refuse(`${backlogFile} has no table with \`#\` and \`Status\` columns.`);
   const twiceRows = dupes(backlog.rows.map((r) => r.n));
   if (twiceRows.length) refuse(at(backlogFile, backlog.rows.filter((r) => r.n === twiceRows[0])[1].no, `backlog has more than one row numbered ${twiceRows.join(', ')}.`));
+  return { slug, base, backlogFile, backlog };
+}
+
+function load(dir, item) {
+  const { slug, base, backlogFile, backlog } = epicBacklog(dir);
   const row = backlog.rows.filter((r) => r.n === item)[0];
   if (!row) refuse(`backlog has no row ${item}.`);
   if (isDone(backlogFile, row)) refuse(`backlog row ${item} is already done — a close happens once.`);
@@ -432,14 +439,31 @@ function load(dir, item) {
   if (backlog.cols.epic === -1 && row.cells.filter((c) => /\bAC\d+\b/i.test(c)).length) {
     refuse(at(backlogFile, row.no, 'this row names an AC but the backlog has no `Epic criterion` column — the claim would be dropped.'));
   }
+  // An AC claimed by several rows is re-run at the close of the last one (D-eci-036): a row after this
+  // one in the run's order (run.json's `order`, else the table), not done, that claims it too owes it.
+  const runPath = join(dir, 'run.json');
+  const runText = readIfExists(runPath);
+  let runOrder = [];
+  if (runText !== null) {
+    let parsed = null;
+    try { parsed = JSON.parse(runText); } catch { refuse(`${runPath} is not JSON — which rows come after this one would be a guess.`); }
+    runOrder = parsed && Array.isArray(parsed.order) ? parsed.order.map(Number) : [];
+  }
+  const order = runOrder.includes(item) ? runOrder : backlog.rows.map((r) => r.n);
+  const later = order.slice(order.indexOf(item) + 1)
+    .map((n) => backlog.rows.filter((r) => r.n === n)[0])
+    .filter((r) => r && !isDone(backlogFile, r));
+  const owedBy = (ac) => later.filter((r) => claimedACs(backlogFile, r).includes(ac)).map((r) => r.n);
+  const laterContext = [];
   for (const ac of claimedACs(backlogFile, row)) {
     if (!acs.has(ac)) refuse(`backlog row ${item} claims ${ac} but epic.md has no \`${ac}\` bullet.`);
-    list.push({ id: ac, text: acs.get(ac), doneWhen: null, file: backlogFile, no: row.no });
+    if (owedBy(ac).length) laterContext.push({ label: `${ac} (also claimed by row ${owedBy(ac).join(', row ')})`, text: acs.get(ac) });
+    else list.push({ id: ac, text: acs.get(ac), doneWhen: null, file: backlogFile, no: row.no });
   }
   const twiceIds = dupes(list.map((e) => e.id));
   const second = list.filter((e) => e.id === twiceIds[0])[1];
   if (twiceIds.length) refuse(`${second.file}:${second.no}: the criteria list names ${twiceIds.join(', ')} more than once — two criteria with one id cannot be told apart in a verdict.`);
-  return { slug, base, backlog, row, provenText, goal, own, list, context };
+  return { slug, base, backlog, row, provenText, goal, own, list, context, laterContext };
 }
 
 function renderPlan(ctx) {
@@ -462,6 +486,12 @@ function renderPlan(ctx) {
     out.push('', '## Context — dated, not re-run', '',
       'These criteria name a moment or artifact that no longer exists to re-check. Do not re-run them or mark them.');
     for (const e of ctx.context) out.push('', `${e.label}:`, e.text);
+  }
+  if (ctx.laterContext.length) {
+    out.push('', '## Context — claimed by a later row, not re-run', '',
+      'These epic ACs are owed by a later row, whose close re-runs them. Do not mark them, and do not describe',
+      'them as met or not met anywhere in your message — a not-met line anywhere refuses this close.');
+    for (const e of ctx.laterContext) out.push('', `${e.label}:`, e.text);
   }
   return out.join('\n') + '\n';
 }
@@ -597,6 +627,76 @@ function withRollup(file, text, row, verdictLine) {
 
 // ------------------------------------------------------------------ main
 
+// ------------------------------------------------------------------ append (the epic gate's findings)
+
+const FINDING = /^- (blocker|major): (\S.*)$/;
+
+/**
+ * The epic gate's ```loop-findings block: fences at column 0 (an indented copy is a
+ * quotation, L-016), one `- blocker|major: <finding>` line each. A minor belongs in memory
+ * scratch, never on the row; an empty block means a clean gate, which runs no append.
+ */
+function readFindings(file, text) {
+  const all = classify(file, region(file, text, null), [['open', /^```loop-findings\s*$/], ['close', /^```\s*$/], ['other', ANY]], 'findings');
+  const opens = all.filter((l) => l.kind === 'open');
+  if (!opens.length) refuse(at(file, 1, 'the findings file has no ```loop-findings block — the epic gate\'s confirmed findings go in one, fences at column 0.'));
+  if (opens.length > 1) refuse(at(file, opens[1].no, 'more than one ```loop-findings block — which one is the gate\'s would be a guess.'));
+  const closes = all.filter((l) => l.kind === 'close' && l.no > opens[0].no);
+  if (!closes.length) refuse(at(file, opens[0].no, 'the ```loop-findings block is never closed with a line ```.'));
+  const body = all.filter((l) => l.no > opens[0].no && l.no < closes[0].no);
+  const odd = body.filter((l) => !FINDING.test(l.text));
+  if (odd.length) {
+    refuse(at(file, odd[0].no, 'the block holds only `- blocker: <finding>` or `- major: <finding>` lines — a minor goes to memory scratch, ' +
+      `never on the integration row: ${JSON.stringify(odd[0].text.trim().slice(0, 80))}`));
+  }
+  if (!body.length) refuse(at(file, opens[0].no, 'the ```loop-findings block holds no finding — a clean epic gate runs no append; record it with loop-record.mjs --epic-gate.'));
+  return body.map((l) => l.text.match(FINDING)).map((m) => `${m[1]}: ${m[2]}`);
+}
+
+const INTEGRATION = /^integration — /;
+
+/** One numbered integration row after the table's last row, and its id on run.json's order. */
+function append(dir, args) {
+  if (args.item !== undefined) refuse('append takes no --item — the integration row gets the next free number.');
+  if (typeof args['findings-file'] !== 'string') refuse('append needs --findings-file <the epic gate\'s findings>.');
+  const findingsText = readIfExists(args['findings-file']);
+  if (findingsText === null) refuse(`cannot read the findings file ${args['findings-file']}.`);
+  const findings = readFindings(args['findings-file'], findingsText);
+  const { backlogFile, backlog } = epicBacklog(dir);
+  const open = backlog.rows.filter((r) => INTEGRATION.test(r.title) && !isDone(backlogFile, r));
+  if (open.length) {
+    refuse(at(backlogFile, open[0].no, `integration row ${open[0].n} is not done — an epic has at most two gates (D-eci-005); ` +
+      'a later gate\'s findings go to the user, not onto a second row.'));
+  }
+  const runPath = join(dir, 'run.json');
+  const runText = readIfExists(runPath);
+  let run = null;
+  if (runText !== null) {
+    try { run = JSON.parse(runText); } catch { refuse(`${runPath} is not JSON — the new row could not be added to the run's order.`); }
+    if (!run || !Array.isArray(run.order)) refuse(`${runPath} has no \`order\` list — the new row could not be added to it.`);
+  }
+  const newId = Math.max(...backlog.rows.map((r) => r.n)) + 1;
+  if (run && run.order.map(Number).includes(newId)) refuse(`${runPath} already lists ${newId} in its order, but the backlog has no row ${newId}.`);
+  const after = run && run.order.length ? Number(run.order[run.order.length - 1]) : backlog.rows[backlog.rows.length - 1].n;
+  const n = findings.length;
+  const lower = cellsOf(backlog.header).map((c) => c.toLowerCase());
+  const cell = (name) => {
+    if (name === '#') return String(newId);
+    if (/sub-?goal/.test(name)) return `integration — ${n} finding(s) from the epic gate`;
+    if (/^done when/.test(name)) return findings.map((f) => f.replace(/\|/g, '\\|')).join('; ');
+    if (/^depends/.test(name)) return String(after);
+    if (/^tier$/.test(name)) return n <= 2 ? 'small' : n <= 5 ? 'medium' : 'large';
+    if (name === 'status') return 'pending';
+    return '—';
+  };
+  const lines = backlog.lines.slice();
+  lines.splice(backlog.last + 1, 0, `| ${lower.map(cell).join(' | ')} |`);
+  writeFileSync(backlogFile, lines.join('\n'));
+  if (run) writeFileSync(runPath, JSON.stringify({ ...run, order: [...run.order, newId] }, null, 2) + '\n');
+  process.stdout.write(`appended integration row ${newId} — ${n} finding(s)${run ? `; run.json order now ends with ${newId}` : ''}\n`);
+  return 0;
+}
+
 function main(argv) {
   const args = parseArgs(argv);
   const cmd = args._[0];
@@ -604,13 +704,14 @@ function main(argv) {
     process.stderr.write(`loop-close: refused, nothing written.\n  - ${args._problems.join('; ')}.\n`);
     return 1;
   }
-  if (args.help || !['plan', 'close'].includes(cmd)) {
+  if (args.help || !['plan', 'close', 'append'].includes(cmd)) {
     process.stdout.write(USAGE);
     return args.help ? 0 : 1;
   }
   const dir = args.dir ?? '.loop';
   try {
     if (args._.length > 1) refuse(`unexpected argument ${JSON.stringify(args._[1])} — loop-close takes one command and flags.`);
+    if (cmd === 'append') return append(dir, args);
     if (typeof args.item !== 'string' || !/^\d+$/.test(args.item)) refuse('--item must be a backlog row number.');
     const item = Number(args.item);
     const ctx = load(dir, item);

@@ -236,6 +236,27 @@ const CASES = [
     code: 1,
     stderr: 'needs a summary',
   },
+  // item 5: the epic gate has its own record and never touches the per-goal gate's
+  {
+    name: '--epic-gate writes state.epic_gate, appends no iteration, and leaves review_gate byte-identical',
+    fixture: { state: { status: 'done', iteration: 4, max_iterations: 12, history: [], review_gate: { recorded: '2026-09-25T00:00:00.000Z', summary: 'item gate: clean' } } },
+    args: ['--epic-gate', 'cross-item: 2 raised, 1 confirmed → integration row 10'],
+    code: 0,
+    check: ({ loop }) => {
+      const s = JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8'));
+      return s.epic_gate?.summary === 'cross-item: 2 raised, 1 confirmed → integration row 10' && typeof s.epic_gate.recorded === 'string'
+        && JSON.stringify(s.review_gate) === JSON.stringify({ recorded: '2026-09-25T00:00:00.000Z', summary: 'item gate: clean' })
+        && s.history.length === 0 && s.iteration === 4;
+    },
+  },
+  {
+    name: '--epic-gate with no summary is refused and writes nothing',
+    fixture: { state: { status: 'done', iteration: 4, max_iterations: 12, history: [] } },
+    args: ['--epic-gate'],
+    code: 1,
+    stderr: '--epic-gate needs a summary',
+    check: ({ loop }) => !('epic_gate' in JSON.parse(readFileSync(join(loop, 'state.json'), 'utf8'))),
+  },
   {
     name: 'record_contract_since is stamped once and never moved',
     fixture: { state: { status: 'running', iteration: 3, max_iterations: 12, record_contract_since: 2,

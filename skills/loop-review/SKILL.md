@@ -174,3 +174,39 @@ iterations (the budget policy in the loop-engine skill). Findings worth keeping 
 hypothesis from a refuted fix) go into scratch for distillation; the review
 summary (dimensions run, findings confirmed/refuted/fixed) goes into the final
 iteration record.
+
+## Epic gate — the items together, once the epic's last item has closed
+
+The per-goal gate reviews one goal's diff; an epic can pass it item by item and
+still ship a rule fixed at one item's site and left at a sibling another item
+touched. The epic gate reviews the items together, once: after the last row in
+the run's order that is not an integration row has closed (`loop-close.mjs
+close` exit 0), before the epic retro — the retro waits for any integration row
+it appends. An integration row (Sub-goal opening `integration — `, the prefix
+`append` writes) skips it, and `append` refuses a second row while one is open:
+a later gate's findings go to the user, not onto another row.
+
+**Charter — cross-item only**, one fresh reviewer per line, in parallel:
+- a sibling site one item fixed and another item left standing;
+- logic duplicated across items drifting apart;
+- an epic invariant a later item broke — including a refusal path, added after
+  the item that proved "a refusal writes nothing", that writes a file;
+- spec fidelity of the whole against `epic.md` (its goal and ACs).
+
+Never the per-goal dimensions on the accumulated diff: each item already had
+its gate. Refute each blocker/major as in Step 4. Confirmed ones go into one
+fenced block, fences at column 0:
+
+````markdown
+```loop-findings
+- major: <finding — file:line where it holds>
+```
+````
+
+and `node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-close.mjs" append --findings-file
+<that file>` turns them into one numbered integration row, adds its id to
+`run.json`'s order, and run-gate holds the session for it; minors go to memory
+scratch. With no confirmed blocker/major, `append` is not run and the runner goes
+on to the retro. Either way record the gate: `loop-record.mjs --epic-gate
+"<lines run; raised; refuted; confirmed; row N or none>"`.
+

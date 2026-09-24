@@ -18,6 +18,7 @@ import { mkdtempSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, ex
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { runStanding } from '../hooks/lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'loop-close.mjs');
@@ -1035,6 +1036,174 @@ const CASES = [
       writeFileSync(b, dashed);
       const r = run(c, ['plan', '--item', '2']);
       return { r, ok: refused.code === 1 && refused.stderr.includes('no `Epic criterion` column') && !r.stdout.includes('## AC1') && r.stdout.includes('## item-2/C1') };
+    },
+  },
+  // item 5: append — the epic gate's confirmed findings become one numbered integration row, and its id joins run.json's order
+  ...(() => {
+    const GATE = join(FIX, 'verdicts', 'epic-gate-findings.md');
+    const ROW3 = '| 3 | integration — 1 finding(s) from the epic gate | major: sibling site unfixed — `src/sum.mjs:4` sums without the rounding item 2 added to `src/total.mjs:7` | — | 2 | — | small | pending |';
+    // after item 2's close, with a run.json whose order holds the rows; returns the paths the append may write
+    const ready = (c, order = [1, 2]) => {
+      run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+      writeFileSync(join(c.loop, 'run.json'), JSON.stringify({ epic: 'demo', hands_off: true, order }, null, 2) + '\n');
+      const f = join(c.dir, 'findings.md');
+      writeFileSync(f, readFileSync(GATE, 'utf8').split('\n').filter((l) => !l.startsWith('- minor:')).join('\n'));
+      return { b: files(c)[0], rj: join(c.loop, 'run.json'), f };
+    };
+    const bytes = (x) => [readFileSync(x.b, 'utf8'), readFileSync(x.rj, 'utf8')];
+    const ok = (c, x, before, r) => ({ r, ok: JSON.stringify(bytes(x)) === JSON.stringify(before) });
+    // the test's own insertion: directly after the table's last row, whatever follows it
+    const inserted = (text) => {
+      const lines = text.split('\n');
+      const last = lines.map((l) => l.trimStart().startsWith('|')).lastIndexOf(true);
+      return [...lines.slice(0, last + 1), ROW3, ...lines.slice(last + 1)].join('\n');
+    };
+    return [
+      ...[['ending with a newline', (t) => t.replace(/\s*$/, '\n')], ['ending without a newline', (t) => t.replace(/\s*$/, '')],
+        ['with a prose line after the table', (t) => `${t.replace(/\s*$/, '')}\n\nNotes: the demo epic's backlog.\n`]].map(([what, shape]) => ({
+        name: `append: one integration row after the table's last row, and its id on run.json's order — backlog ${what} (whole files)`,
+        src: DEMO, code: 0,
+        go: (c) => {
+          const x = ready(c);
+          writeFileSync(x.b, shape(readFileSync(x.b, 'utf8')));
+          const b0 = readFileSync(x.b, 'utf8');
+          const r = run(c, ['append', '--findings-file', x.f]);
+          const standing = runStanding(c.dir);
+          return { r, ok: readFileSync(x.b, 'utf8') === inserted(b0)
+            && readFileSync(x.rj, 'utf8') === JSON.stringify({ epic: 'demo', hands_off: true, order: [1, 2, 3] }, null, 2) + '\n'
+            && standing !== null && standing.next.id === 3 };
+        },
+      })),
+      {
+        name: 'append: the fixture file as-is refuses at its `- minor:` line (epic-gate-findings.md:9) and writes nothing',
+        src: DEMO, code: 1,
+        go: (c) => { const x = ready(c); const before = bytes(x); const r = run(c, ['append', '--findings-file', GATE]);
+          return { r, ok: ok(c, x, before, r).ok && r.stderr.includes('epic-gate-findings.md:9: ') && r.stderr.includes('a minor goes to memory scratch') }; },
+      },
+      ...[['no block', (t) => t.replace('```loop-findings\n', '').replace(/\n```\s*$/, '\n'), 'has no ```loop-findings block'],
+        ['two blocks', (t) => `${t}\n\`\`\`loop-findings\n- major: again\n\`\`\`\n`, 'more than one ```loop-findings block'],
+        ['a block never closed', (t) => t.replace(/\n```\s*$/, '\n'), 'never closed'],
+        ['an empty block (a clean gate runs no append)', (t) => t.replace(/```loop-findings\n[\s\S]*?\n```/, '```loop-findings\n```'), 'holds no finding'],
+        ['an indented block (a quotation, L-016)', (t) => t.replace('```loop-findings\n', '    ```loop-findings\n'), 'has no ```loop-findings block']].map(([what, edit, want]) => ({
+        name: `append: ${what} refuses, nothing written`,
+        src: DEMO, code: 1,
+        go: (c) => { const x = ready(c); writeFileSync(x.f, edit(readFileSync(x.f, 'utf8'))); const before = bytes(x);
+          const r = run(c, ['append', '--findings-file', x.f]); return { r, ok: ok(c, x, before, r).ok && r.stderr.includes(want) }; },
+      })),
+      {
+        name: 'append: a second append while an integration row is not done refuses (two gates per epic) and writes nothing',
+        src: DEMO, code: 1,
+        go: (c) => { const x = ready(c); run(c, ['append', '--findings-file', x.f]); const before = bytes(x);
+          const r = run(c, ['append', '--findings-file', x.f]); return { r, ok: ok(c, x, before, r).ok && r.stderr.includes('integration row 3 is not done') }; },
+      },
+      {
+        name: 'append: a pending row whose Sub-goal merely mentions "integration" does not block it',
+        src: DEMO, code: 0,
+        go: (c) => { const x = ready(c);
+          writeFileSync(x.b, readFileSync(x.b, 'utf8').replace(/(\| 2 \| JSON output[^\n]*)/, '$1\n| 3 | CI integration hardening | x | y | 2 | — | small | pending |'));
+          const r = run(c, ['append', '--findings-file', x.f]);
+          return { r, ok: readFileSync(x.b, 'utf8').includes('| 4 | integration — 1 finding(s) from the epic gate |') }; },
+      },
+      {
+        name: 'append: a run.json order already holding the new id refuses, nothing written',
+        src: DEMO, code: 1,
+        go: (c) => { const x = ready(c, [1, 2, 3]); const before = bytes(x);
+          const r = run(c, ['append', '--findings-file', x.f]); return { r, ok: ok(c, x, before, r).ok && r.stderr.includes('already lists 3') }; },
+      },
+      {
+        name: 'append: --item is refused (the row gets the next free number)',
+        src: DEMO, code: 1,
+        go: (c) => { const x = ready(c); const before = bytes(x);
+          const r = run(c, ['append', '--item', '3', '--findings-file', x.f]); return { r, ok: ok(c, x, before, r).ok && r.stderr.includes('append takes no --item') }; },
+      },
+    ];
+  })(),
+  // item 5 (D-eci-036): an AC claimed by several rows is re-run only at the last claimer's close
+  ...(() => {
+    const later = (c) => writeFileSync(files(c)[0], readFileSync(files(c)[0], 'utf8').replace(/(\| 2 \| JSON output[^\n]*)/, '$1\n| 3 | Docs | x | y | 2 | AC1 | small | pending |'));
+    const SENTENCE = 'Do not mark them, and do not describe\nthem as met or not met anywhere in your message';
+    return [
+      {
+        name: 'last claimer: an AC a later pending row also claims is context under its own heading, with the do-not-mark sentence; close does not need it',
+        src: DEMO, code: 0,
+        go: (c) => {
+          later(c);
+          const plan = run(c, ['plan', '--item', '2']).stdout;
+          const ctx = plan.split('## Context — claimed by a later row, not re-run')[1] ?? '';
+          const v = verdictFrom(c, APPROVE, (t) => t.replace(/- AC1: met[^\n]*\n/, ''));
+          const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+          return { r, ok: !plan.includes('## AC1\n') && ctx.includes(SENTENCE) && ctx.includes('AC1 (also claimed by row 3):\n- [ ] AC1')
+            && statusCell(c, 2).startsWith('done') && rollupCell(c, 2, 'outcome').includes('; item-1/C1, item-2/C1; ') };
+        },
+      },
+      {
+        name: 'last claimer: run.json order puts the other claimer first — the AC is re-run here',
+        src: DEMO, code: 0,
+        go: (c) => {
+          later(c);
+          writeFileSync(join(c.loop, 'run.json'), JSON.stringify({ epic: 'demo', order: [1, 3, 2] }) + '\n');
+          const r = run(c, ['plan', '--item', '2']);
+          return { r, ok: r.stdout.includes('## AC1\n') && !r.stdout.includes('claimed by a later row') };
+        },
+      },
+      {
+        name: 'last claimer: a later row that is done does not owe the AC — it is re-run here',
+        src: DEMO, code: 0,
+        go: (c) => {
+          writeFileSync(files(c)[0], readFileSync(files(c)[0], 'utf8').replace(/(\| 2 \| JSON output[^\n]*)/, '$1\n| 3 | Docs | x | y | 2 | AC1 | small | done (earlier) |'));
+          writeFileSync(files(c)[1], `${readFileSync(files(c)[1], 'utf8').replace(/\s*$/, '')}\n\n## Item 3\nSource: item 3's goal.md at close\n\n- [x] C1 docs\n      Done when: the docs page lists the flag\n`);
+          const r = run(c, ['plan', '--item', '2']);
+          return { r, ok: r.stdout.includes('## AC1\n') && !r.stdout.includes('claimed by a later row') };
+        },
+      },
+      {
+        name: 'append: a finding holding `|` is escaped in the Done-when cell and the row stays one row',
+        src: DEMO, code: 0,
+        go: (c) => {
+          run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          const f = join(c.dir, 'f.md');
+          writeFileSync(f, '```loop-findings\n- major: a | b split\n```\n');
+          const r = run(c, ['append', '--findings-file', f]);
+          const row = readFileSync(files(c)[0], 'utf8').split('\n').filter((l) => l.startsWith('| 3 |'))[0] ?? '';
+          return { r, ok: row.includes('major: a \\| b split') && row.split(/(?<!\\)\|/).length === 10 };
+        },
+      },
+    ];
+  })(),
+  // item 5 review gate: the tier thresholds at both sides of each boundary, and a run.json that is not JSON
+  ...[[2, 'small'], [3, 'medium'], [5, 'medium'], [6, 'large']].map(([n, tier]) => ({
+    name: `append: ${n} findings → Tier ${tier}`,
+    src: DEMO, code: 0,
+    go: (c) => {
+      run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+      const f = join(c.dir, 'f.md');
+      writeFileSync(f, `\`\`\`loop-findings\n${Array.from({ length: n }, (_, i) => `- major: finding ${i + 1}`).join('\n')}\n\`\`\`\n`);
+      const r = run(c, ['append', '--findings-file', f]);
+      const row = readFileSync(files(c)[0], 'utf8').split('\n').filter((l) => l.startsWith('| 3 |'))[0] ?? '';
+      return { r, ok: row.includes(`| integration — ${n} finding(s) from the epic gate |`) && row.endsWith(`| ${tier} | pending |`) };
+    },
+  })),
+  ...['plan', 'close'].map((cmd) => ({
+    name: `${cmd}: a run.json that is not JSON refuses (which rows come after this one would be a guess), nothing written`,
+    src: DEMO, code: 1,
+    go: (c) => {
+      writeFileSync(join(c.loop, 'run.json'), '{ "epic": "demo", "order": [1, 2');
+      const before = snap(c);
+      const r = run(c, cmd === 'plan' ? ['plan', '--item', '2'] : ['close', '--item', '2', '--verdict-file', APPROVE]);
+      return { r, ok: same(c, before) && r.stderr.includes('is not JSON') };
+    },
+  })),
+  {
+    name: 'append: a run.json that is not JSON refuses with that reason, nothing written',
+    src: DEMO, code: 1,
+    go: (c) => {
+      run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+      writeFileSync(join(c.loop, 'run.json'), '{ "epic": "demo"');
+      const f = join(c.dir, 'f.md');
+      writeFileSync(f, '```loop-findings\n- major: one\n```\n');
+      const b0 = readFileSync(files(c)[0], 'utf8');
+      const r = run(c, ['append', '--findings-file', f]);
+      return { r, ok: readFileSync(files(c)[0], 'utf8') === b0 && readFileSync(join(c.loop, 'run.json'), 'utf8') === '{ "epic": "demo"' && r.stderr.includes('is not JSON') };
     },
   },
   // item 3: the close records the verifier's agent id when given (optional — item 8's C8 keeps the documented usage)

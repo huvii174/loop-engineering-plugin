@@ -95,6 +95,9 @@ const USAGE = `loop-record — write one iteration into .loop/state.json
   --review-gate "<summary>"        record that the review gate ran, and what it
                                    found; writes state.review_gate, appends no
                                    history entry
+  --epic-gate "<summary>"          record that the epic gate ran (loop-review,
+                                   Epic gate); writes state.epic_gate, leaves
+                                   review_gate as it is, appends no history entry
 `;
 
 // ----------------------------------------------------------------------- state
@@ -316,11 +319,14 @@ function main(argv) {
   // four: nothing wrote the field, so the most expensive gate in the loop was
   // the least visible afterwards. It is not an iteration, so it appends no
   // history — the fixes it produces are recorded as `kind: review-fix`.
-  if (args['review-gate'] !== undefined) {
-    const summary = String(args['review-gate']).trim();
+  // The epic gate (item 5) is recorded the same way, in its own field: an item's
+  // per-goal gate and the epic's cross-item gate must not overwrite each other.
+  for (const [flag, field] of [['review-gate', 'review_gate'], ['epic-gate', 'epic_gate']]) {
+    if (args[flag] === undefined) continue;
+    const summary = String(args[flag]).trim();
     if (!summary || summary === 'true') {
       process.stderr.write(
-        'loop-record: --review-gate needs a summary — the dimensions that ran, findings raised, ' +
+        `loop-record: --${flag} needs a summary — the dimensions that ran, findings raised, ` +
         'confirmed after refutation, and fixed. "Clean" is a result; silence is not.\n'
       );
       return 1;
@@ -329,14 +335,14 @@ function main(argv) {
     try { state = loadState(statePath); } catch (e) {
       process.stderr.write(`loop-record: ${e.message}\n`); return 1;
     }
-    state.review_gate = { recorded: new Date().toISOString(), summary };
-    state.updated = state.review_gate.recorded;
+    state[field] = { recorded: new Date().toISOString(), summary };
+    state.updated = state[field].recorded;
     if (args.dryRun) {
-      process.stdout.write(`loop-record: would record review_gate — ${summary}\n`);
+      process.stdout.write(`loop-record: would record ${field} — ${summary}\n`);
       return 0;
     }
     writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
-    process.stdout.write(`recorded review_gate — ${summary}\n`);
+    process.stdout.write(`recorded ${field} — ${summary}\n`);
     return 0;
   }
 

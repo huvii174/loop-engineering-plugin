@@ -100,10 +100,22 @@ export function mdSection(text, heading) {
   return next === -1 ? rest : rest.slice(0, next);
 }
 
-/** One backlog id, or null: run.json is model-written, so "2" and 2 are the same item. */
-function itemId(v) {
+/** A whole number from model-written JSON or a table cell: "2" and 2 are the same; null when it is not one. */
+function wholeNumber(v) {
   const n = typeof v === 'number' ? v : Number.parseInt(String(v ?? ''), 10);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isInteger(n) ? n : null;
+}
+
+/** A backlog row id — `0` is a row (an epic's baseline item), so ids are ≥ 0. */
+function rowId(v) {
+  const n = wholeNumber(v);
+  return n !== null && n >= 0 ? n : null;
+}
+
+/** A positive count (run.json `budget`): 0 or less means no budget. */
+function itemId(v) {
+  const n = wholeNumber(v);
+  return n !== null && n > 0 ? n : null;
 }
 
 const SLUG = /^[a-z0-9][a-z0-9._-]*$/i;
@@ -120,15 +132,16 @@ export function loadRun(cwd) {
   try {
     const data = JSON.parse(readFileSync(p, 'utf8'));
     if (!data || typeof data.epic !== 'string' || !SLUG.test(data.epic.trim())) return null;
-    const ids = (v) => (Array.isArray(v) ? v.map(itemId).filter((n) => n !== null) : []);
+    const ids = (v) => (Array.isArray(v) ? v.map(rowId).filter((n) => n !== null) : []);
     return { path: p, data: { ...data, epic: data.epic.trim(), order: ids(data.order), human_gates: ids(data.human_gates) } };
   } catch { return null; }
 }
 
 /**
- * Rows of the FIRST backlog table in the text: `{ id, title, status }`, status
- * being the leading word of the Status cell, lowercased, decoration stripped
- * ("**done**", "✅ done", "done." all read `done`). The cell is model-written
+ * Rows of the FIRST backlog table in the text: `{ id, title, status }` (id ≥ 0 —
+ * row `0` is a row), status being the leading word of the Status cell, lowercased,
+ * once `` ` * _ `` are gone ("**done**", "Done (…)", "done." read `done`;
+ * "✅ done" and "[x] done" do not — the rule loop-close.mjs applies, D-eci-026). The cell is model-written
  * prose ("designed (pre-compiled, awaiting sub-goal 1)"), and the loop's close
  * step writes its leading word — `done`, `stuck`, `pending` — so the leading
  * word is the contract and the rest is commentary. Fenced blocks are skipped,
@@ -158,10 +171,12 @@ export function parseBacklog(text) {
       continue;
     }
     if (/^:?-+:?$/.test(cells[0] ?? '')) continue; // the |---| rule
-    const id = itemId(cells[cols.id]);
+    const id = rowId(cells[cols.id]);
     if (id === null || seen.has(id)) continue;
     seen.add(id);
-    const statusCell = (cells[cols.status] ?? '').replace(/[`*_]/g, '').replace(/^\[[^\]]*\]\s*/, '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+    // The leading word once `` ` * _ `` are gone — the same rule as loop-close.mjs's isDone (D-eci-026):
+    // `✅ done`, `[x] done` and `~~x~~ done` do not open with `done`, so they are not done.
+    const statusCell = (cells[cols.status] ?? '').replace(/[`*_]/g, '').trim();
     const status = (statusCell.split(/[\s(,;:/.!]+/)[0] || 'pending').toLowerCase();
     rows.push({ id, title: cells[cols.title] ?? '', status });
   }

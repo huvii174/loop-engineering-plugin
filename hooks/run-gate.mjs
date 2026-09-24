@@ -76,8 +76,9 @@ function nextAction(next, loop) {
       `run the breaker and take the next iteration`;
   }
   if (mine && loop.status === 'done') {
-    return `item ${next.id}'s loop is done but its backlog row is not — finish the loop's close step ` +
-      `(memory, epic bookkeeping, row → done), then start the next item's design gate`;
+    return `item ${next.id}'s loop is done but its backlog row is not — run the close step ` +
+      `(commands/loop.md "On every stop" step 3: loop-close.mjs writes done on a full APPROVE), ` +
+      `then memory, then the next item's design gate`;
   }
   if (mine && loop.status === 'designed') {
     return `item ${next.id} is designed — run its loop (/loop-engineering:loop flow, breaker first)`;

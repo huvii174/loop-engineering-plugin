@@ -295,7 +295,8 @@ budget policy in the loop-engine skill).
    present, the runner continues to the next pending item itself (its design
    gate is the next action, not a hand-back); otherwise name that item for
    `/loop-engineering:design "<sub-goal>"` — or, if this closed the last item:
-   write the **Epic retro** (Step 4 of the memory command), report the epic's
+   run the epic gate (`loop-engineering:loop-review` skill, Epic gate; an
+   integration row it appends runs before anything below), then write the **Epic retro** (Step 4 of the memory command), report the epic's
    acceptance-criteria status, **promote any still-binding decision** from
    `.loop/memory/decisions/<slug>/` into `decisions/durable.md` keeping its ID
    (move its `_index.md` line into the durable group too), then **archive the

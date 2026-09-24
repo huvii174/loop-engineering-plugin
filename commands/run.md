@@ -83,7 +83,9 @@ For each item in topo order:
      gate stays silent there.)
    - User cancel → the loop writes `stopped-user`; **delete `.loop/run.json`**
      so the gate does not hold a run the user ended.
-4. When the last item closes: Epic retro + instance archive + pointer cleanup
+4. When the last item closes: the epic gate first (`loop-engineering:loop-review`
+   skill, Epic gate) — an integration row it appends is the next item, and the
+   retro waits for it. Then Epic retro + instance archive + pointer cleanup
    (the loop's own close semantics), **delete `.loop/run.json`**, then a final
    epic report — per-item outcomes, total iterations, epic acceptance-criteria
    status with evidence.

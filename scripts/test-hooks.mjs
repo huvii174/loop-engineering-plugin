@@ -6,10 +6,11 @@
  */
 
 import { spawnSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runStanding } from '../hooks/lib.mjs';
 
 const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 
@@ -668,12 +669,35 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   check('run-gate: running loop of a different item → block, but says design gate, not mid-flight',
     r.code === 2 && !r.err.includes('mid-flight') && r.err.includes("item 2's design gate"), r.err.slice(0, 200));
 
-  // status-cell decoration
-  for (const cell of ['done.', '✅ done', '**Done**', '[x] done', 'done!']) {
+  // status-cell decoration — the done rule is loop-close.mjs's (D-eci-026): `done` opens the cell once
+  // ` * _ are gone. Item 5 moved '✅ done' and '[x] done' out of this list (named, stricter change).
+  for (const cell of ['done.', '**Done**', 'done!', 'Done (closed 2026-09-25 by loop-close)']) {
     d = runProj({ run: RUN, backlog: BACKLOG(cell, cell, cell) });
     r = runHook('run-gate.mjs', { cwd: d });
     check(`run-gate: status cell ${JSON.stringify(cell)} reads done → allow`, r.code === 0, `code=${r.code} err=${r.err.slice(0, 100)}`);
   }
+  for (const cell of ['✅ done', '[x] done', '~~x~~ done']) {
+    d = runProj({ run: RUN, backlog: BACKLOG(cell, cell, cell) });
+    r = runHook('run-gate.mjs', { cwd: d });
+    check(`run-gate: status cell ${JSON.stringify(cell)} reads not done (loop-close's rule) → block`, r.code === 2 && r.err.includes('0 of 3 items done'), `code=${r.code} err=${r.err.slice(0, 100)}`);
+  }
+
+  // row 0 is a row (L-007): a run whose first pending item is 0 names it; budget 0 is no budget
+  {
+    const B0 = `# Backlog — demo\n\n| # | Sub-goal | Status |\n|---|---|---|\n| 0 | Baseline | pending |\n| 1 | Next | pending |\n`;
+    d = runProj({ run: { ...RUN, order: [0, 1] }, backlog: B0 });
+    r = runHook('run-gate.mjs', { cwd: d });
+    check('run-gate: row 0 pending first in order → block naming item 0', r.code === 2 && r.err.includes('next is item 0') && r.err.includes('0 of 2 items done'), r.err.slice(0, 160));
+    d = runProj({ run: { ...RUN, order: [0, 1], budget: 0, done_at_start: 0 }, backlog: B0 });
+    r = runHook('run-gate.mjs', { cwd: d });
+    check('run-gate: budget 0 is no budget (a positive count is required) → still blocks', r.code === 2 && r.err.includes('next is item 0'), `code=${r.code}`);
+  }
+
+  // item 5: a loop done while its row is not — the close step writes done, not the model
+  d = runProj({ run: RUN, backlog: BACKLOG('done', 'designed', 'pending'), state: { status: 'done', backlog_item: 2 } });
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: loop done, row not → says to run the close step (loop-close writes done)',
+    r.code === 2 && r.err.includes('loop-close.mjs writes') && !r.err.includes('row → done'), r.err.slice(0, 240));
 
   // only the first table is the backlog; fenced tables and later tables do not rewrite it
   d = runProj({ run: RUN, backlog: BACKLOG('done', 'done', 'done') + '\n## Acceptance\n\n| # | Criterion | Status |\n|---|---|---|\n| 1 | ships | pending |\n' });
@@ -837,6 +861,28 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   d = openRun();
   t = track(d, 'SubagentStart', { session_id: 7, agent_id: 8 });
   check('agent-track: a non-string session_id/agent_id → nothing written', t.code === 0 && !existsSync(join(d, '.loop', '.agents-running')), `code=${t.code}`);
+}
+
+// ------------------------------------------- runStanding sees an appended integration row (item 5)
+{
+  // the dogfood epic after item 2's close; the epic gate's findings (minor line removed) appended by loop-close
+  const FIX = join(HOOKS, '..', 'fixtures', 'dogfood-epic');
+  const d = mkdtempSync(join(tmpdir(), 'loop-hook-append-'));
+  cleanup.push(d);
+  cpSync(join(FIX, '.loop'), join(d, '.loop'), { recursive: true });
+  const close = join(HOOKS, '..', 'scripts', 'loop-close.mjs');
+  spawnSync('node', [close, 'close', '--dir', join(d, '.loop'), '--item', '2', '--verdict-file', join(FIX, 'verdicts', 'approve.md')]);
+  writeFileSync(join(d, '.loop', 'run.json'), JSON.stringify({ epic: 'demo', hands_off: true, order: [1, 2] }, null, 2) + '\n');
+  const before = runStanding(d);
+  const f = join(d, 'findings.md');
+  writeFileSync(f, readFileSync(join(FIX, 'verdicts', 'epic-gate-findings.md'), 'utf8').split('\n').filter((l) => !l.startsWith('- minor:')).join('\n'));
+  const a = spawnSync('node', [close, 'append', '--dir', join(d, '.loop'), '--findings-file', f], { encoding: 'utf8' });
+  const after = runStanding(d);
+  check('runStanding: nothing pending after the last close, then the appended integration row is next',
+    before === null && a.status === 0 && after !== null && after.next.id === 3 && after.order.join(',') === '1,2,3',
+    `before=${JSON.stringify(before)} append=${a.status} ${a.stderr} next=${after && after.next.id}`);
+  const r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: the appended integration row holds the session', r.code === 2 && r.err.includes('next is item 3'), r.err.slice(0, 160));
 }
 
 // ------------------------------------------------------------ hooks.json wiring
