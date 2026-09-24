@@ -89,6 +89,94 @@ function skip(name, why) {
     r.code === 1 && r.err.includes('already exists'), `code=${r.code} err=${r.err}`);
 }
 
+// ------------------------------------------- run: the epic's integration point
+{
+  const BACKLOG = [
+    '# Backlog — Demo',
+    '| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Epic criterion | Tier | Cond. | Status |',
+    '|---|---|---|---|---|---|---|---|---|',
+    '| 1 | CLI total | x | y | — | AC1 | small | — | done |',
+    '| 2 | JSON output | x | y | 1 | AC1 | small | integration point | done (closed by loop-close) |',
+    '| 3 | CSV output | x | y | 2 | — | small | — | pending |',
+    '',
+  ].join('\n');
+  // item N's finished run of epic demo, as the design gate leaves it: goal.md's Epic: line, no backlog_item
+  const pointRun = ({ item = 2, epicGate = false, status = 'done', link = true, backlog = BACKLOG } = {}) => {
+    const dir = loopDir({ runId: `run-demo-${item}`, iterations: 1, epic: 'demo' });
+    if (link) writeFileSync(join(dir, 'goal.md'), `Epic: demo — backlog item #${item}\n\n# Goal\n`);
+    const st = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'));
+    writeFileSync(join(dir, 'state.json'), JSON.stringify({ ...st, status, ...(epicGate ? { epic_gate: { recorded: '2026-09-25', summary: 'clean' } } : {}) }));
+    if (backlog !== null) { mkdirSync(join(dir, 'epics', 'demo'), { recursive: true }); writeFileSync(join(dir, 'epics', 'demo', 'backlog.md'), backlog); }
+    return dir;
+  };
+  const top = (dir) => ['goal.md', 'design.md', 'prompt.md', 'state.json', 'iterations'].map((n) => existsSync(join(dir, n)));
+  const allThere = (dir) => top(dir).every(Boolean) && !existsSync(join(dir, 'archive'));
+  const archived = (dir, item) => existsSync(join(dir, 'archive', `run-demo-${item}`, 'state.json')) && !existsSync(join(dir, 'state.json'));
+
+  for (const flags of [[], ['--force'], ['--allow-gaps']]) {
+    const dir = pointRun();
+    const r = archive('run', '--dir', dir, ...flags);
+    check(`point: the integration point's run without epic_gate is refused${flags.length ? ` (${flags[0]} does not waive it)` : ''}, nothing moved`,
+      r.code === 1 && allThere(dir) && r.err.includes('Epic gate') && r.err.includes('--epic-gate') && r.err.includes("item 2 is epic demo's integration point"),
+      `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = pointRun({ epicGate: true });
+    const r = archive('run', '--dir', dir);
+    check('point: with epic_gate recorded the run archives as before', r.code === 0 && archived(dir, 2), `code=${r.code} err=${r.err}`);
+  }
+  for (const [what, opts, item] of [
+    ['another row', { item: 1 }, 1],
+    ['no Epic: line in goal.md', { link: false }, 2],
+    ['no backlog', { backlog: null }, 2],
+    ['status not done', { status: 'stuck' }, 2],
+  ]) {
+    const dir = pointRun(opts);
+    const r = archive('run', '--dir', dir);
+    check(`point: a run that is not the point's (${what}) archives as before`, r.code === 0 && archived(dir, item) && r.err === '', `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = pointRun({ backlog: BACKLOG.replace('| 3 | CSV', '| 3a | CSV') });
+    const r = archive('run', '--dir', dir);
+    const lines = r.err.trim().split('\n');
+    check("point: a backlog loop-close's reader refuses archives as before, with one stderr line naming the refusal",
+      r.code === 0 && archived(dir, 2) && lines.length === 1 && lines[0].includes("loop-close's reader refused") && lines[0].includes('3a'),
+      `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = pointRun();
+    writeFileSync(join(dir, 'state.json'), JSON.stringify({ status: 'done', run_id: 'run-demo-2', epic: 'demo', epic_gate: 'yes' }));
+    const r = archive('run', '--dir', dir);
+    check('point: an epic_gate that is not an object is no record — refused', r.code === 1 && allThere(dir) && r.err.includes('--epic-gate'), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = pointRun();
+    writeFileSync(join(dir, 'state.json'), '{ not json');
+    const r = archive('run', '--dir', dir, '--id', 'run-demo-2');
+    check('point: an unreadable state.json is not checked — archives as before with --id', r.code === 0 && archived(dir, 2) && r.err === '', `code=${r.code} err=${r.err}`);
+  }
+  for (const [what, edit] of [
+    // `epics/../x/backlog.md` resolves to `.loop/x/backlog.md` — a point backlog sits there, so only the slug check keeps it out
+    ['an Epic: slug that is a path', (dir) => { writeFileSync(join(dir, 'goal.md'), 'Epic: ../x — backlog item #2\n\n# Goal\n'); mkdirSync(join(dir, 'x')); writeFileSync(join(dir, 'x', 'backlog.md'), BACKLOG); }],
+    ['a backlog with no # / Status table', (dir) => writeFileSync(join(dir, 'epics', 'demo', 'backlog.md'), '# Backlog\n\nprose only\n')],
+    ['the value in a column that is not Cond.', (dir) => writeFileSync(join(dir, 'epics', 'demo', 'backlog.md'), BACKLOG.replace('| Cond. |', '| Second cond |'))],
+  ]) {
+    const dir = pointRun();
+    edit(dir);
+    const r = archive('run', '--dir', dir);
+    check(`point: ${what} — not the point, archives as before`, r.code === 0 && archived(dir, 2) && r.err === '', `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = pointRun();
+    writeFileSync(join(dir, 'goal.md'), 'Epic: demo — backlog item #2\nEpic: demo — backlog item #2\n\n# Goal\n');
+    const r = archive('run', '--dir', dir);
+    const lines = r.err.trim().split('\n');
+    check("point: a goal.md loop-close's reader refuses archives as before, with one stderr line naming the refusal",
+      r.code === 0 && archived(dir, 2) && lines.length === 1 && lines[0].includes("loop-close's reader refused") && lines[0].includes('goal.md:2'),
+      `code=${r.code} err=${r.err}`);
+  }
+}
+
 // ---------------------------------------------- run: the iterations/iterations bug
 {
   // The exact sequence that produced archive/<id>/iterations/iterations/ in the

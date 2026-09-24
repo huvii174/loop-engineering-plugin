@@ -31,6 +31,7 @@
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { integrationPoint } from './loop-close.mjs';
 
 /** What a finished run leaves behind at the top of `.loop/`. */
 const RUN_ITEMS = ['goal.md', 'design.md', 'prompt.md', 'state.json', 'iterations'];
@@ -178,7 +179,27 @@ export function planRun(dir, runId, { force = false, allowGaps = false } = {}) {
       { waivedByAllowGaps: true }
     ));
   }
-  return { kind: 'run', actions, refusals, notes, target, staging, force, gaps, allowGaps };
+  // The epic's integration point: its epic gate runs before the next item's design gate, and that
+  // design gate archives this run first — so the run leaves only once the gate is on its state.
+  const warnings = [];
+  const state = parseJson(readIfExists(join(dir, 'state.json')));
+  if (state && state.status === 'done' && !(state.epic_gate && typeof state.epic_gate === 'object')) {
+    const p = integrationPoint(dir);
+    if (p?.refusal) {
+      warnings.push(`not checked for an epic integration point — loop-close's reader refused: ${p.refusal}`);
+    } else if (p?.point) {
+      refusals.push(refusal(
+        `item ${p.item} is epic ${p.slug}'s integration point and state.json has no epic_gate — run the epic gate ` +
+        '(loop-engineering:loop-review skill, Epic gate) and record it with `loop-record.mjs --epic-gate "<summary>"`, then archive.'
+      ));
+    }
+  }
+  return { kind: 'run', actions, refusals, notes, warnings, target, staging, force, gaps, allowGaps };
+}
+
+function parseJson(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
 }
 
 /**
@@ -188,10 +209,7 @@ export function planRun(dir, runId, { force = false, allowGaps = false } = {}) {
  * drifted still reports against something recorded per entry.
  */
 export function missingRecords(dir) {
-  const raw = readIfExists(join(dir, 'state.json'));
-  if (!raw) return [];
-  let history;
-  try { history = JSON.parse(raw).history; } catch { return []; }
+  const history = parseJson(readIfExists(join(dir, 'state.json')))?.history;
   if (!Array.isArray(history) || !history.length) return [];
   let present;
   try {
@@ -207,9 +225,7 @@ export function missingRecords(dir) {
 
 /** The run id recorded by the run itself, when `--id` was not given. */
 function runIdFromState(dir) {
-  const raw = readIfExists(join(dir, 'state.json'));
-  if (!raw) return null;
-  try { return JSON.parse(raw).run_id ?? null; } catch { return null; }
+  return parseJson(readIfExists(join(dir, 'state.json')))?.run_id ?? null;
 }
 
 /**
@@ -537,6 +553,7 @@ function main(argv) {
 
   // prune deletes for a living, so it stays in dry-run until told otherwise.
   const dryRun = has('--dry-run') || (cmd === 'prune' && !has('--yes'));
+  for (const w of plan.warnings ?? []) process.stderr.write(`loop-archive: ${w}\n`);
   for (const n of plan.notes) process.stdout.write(`note    ${n}\n`);
   for (const a of plan.actions) process.stdout.write(`${dryRun ? '(dry-run) ' : ''}${describe(a)}\n`);
   for (const s of plan.suggestions ?? []) process.stdout.write(`suggest ${s}\n`);

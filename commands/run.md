@@ -73,7 +73,9 @@ For each item in topo order:
 3. **Route on outcome:**
    - `done` → announce (one line: item, iterations used, criteria evidence),
      continue to the next item **in the same turn** — the design gate of item
-     k+1 is the next action, not a summary.
+     k+1 is the next action, not a summary. When the close names the item as
+     the epic's integration point, the epic gate comes first
+     (`loop-engineering:loop-review` skill, Epic gate).
    - `stuck` → **the runner stops.** The backlog row reads `stuck`, which is
      what silences the gate. Present the stuck diagnosis (competing hypotheses
      + recommended probe) and wait for the user. Never skip a stuck item to

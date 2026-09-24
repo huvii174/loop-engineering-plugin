@@ -282,7 +282,9 @@ budget policy in the loop-engine skill).
    4. `node "${CLAUDE_PLUGIN_ROOT}/scripts/loop-close.mjs" close --item <N>
       --verdict-file <that file> --agent-id <the verifier's agent id>`.
    Exit `0` wrote `done` on the backlog row, the item's criteria into
-   `proven.md`, and the verdict onto its rollup row. Exit `1` wrote nothing:
+   `proven.md`, and the verdict onto its rollup row; when it also names the
+   item as the epic's integration point, the epic gate runs now
+   (`loop-engineering:loop-review` skill, Epic gate). Exit `1` wrote nothing:
    the refusal is the next `review-fix` iteration of this goal; with no
    iteration left, the budget policy in the loop-engine skill decides. Only
    `close` writes `done`; the model writes `stuck` or back to `pending` on the

@@ -152,6 +152,8 @@ The **`Cond.`** column is the other half: name the cheap probe that could make a
 expensive item unnecessary, and the item is only built if the probe says so. One
 real epic retired a whole item that way — *"make the expensive item conditional
 on a cheap observation"* is the shape to copy.
+The one other value a `Cond.` cell takes is `integration point` — `epic-planner`'s
+rule 10 says when.
 
 Also persist the sign-off into recallable memory (create
 `.loop/memory/decisions/<epic-slug>/` and its `_index.md` if absent): one entry

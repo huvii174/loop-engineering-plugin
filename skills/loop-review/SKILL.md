@@ -175,16 +175,24 @@ hypothesis from a refuted fix) go into scratch for distillation; the review
 summary (dimensions run, findings confirmed/refuted/fixed) goes into the final
 iteration record.
 
-## Epic gate — the items together, once the epic's last item has closed
+## Epic gate — the items together, at the integration point and the last close
 
 The per-goal gate reviews one goal's diff; an epic can pass it item by item and
 still ship a rule fixed at one item's site and left at a sibling another item
-touched. The epic gate reviews the items together, once: after the last row in
+touched. The epic gate reviews the items together: after the last row in
 the run's order that is not an integration row has closed (`loop-close.mjs
 close` exit 0), before the epic retro — the retro waits for any integration row
 it appends. An integration row (Sub-goal opening `integration — `, the prefix
 `append` writes) skips it, and `append` refuses a second row while one is open:
 a later gate's findings go to the user, not onto another row.
+
+It also runs once mid-epic, when the row whose `Cond.` reads `integration point`
+has closed (`loop-close.mjs close` says so): the same charter over the items
+closed so far, before the next item's design gate — which cannot archive that
+item's run (`loop-archive.mjs run`) until the gate is recorded with
+`--epic-gate`. An integration row it appends runs next, before the items after
+the point. When the point is also the last non-integration row, the two are one
+gate.
 
 **Charter — cross-item only**, one fresh reviewer per line, in parallel:
 - a sibling site one item fixed and another item left standing;

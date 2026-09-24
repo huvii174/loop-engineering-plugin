@@ -14,7 +14,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, cpSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -1428,6 +1428,132 @@ const CASES = [
       return { r, ok };
     },
   },
+  // item 6: the integration point — a `Cond.` column, row 2 the point, row 3 pending after it (a temp copy; the fixture is never written)
+  ...(() => {
+    const POINT_LINE = "item 2 is the epic's integration point — run the epic gate (loop-review skill, Epic gate)";
+    const point = (c, { second = false } = {}) => {
+      const b = files(c)[0];
+      const t = readFileSync(b, 'utf8').split('\n').map((l) => {
+        if (!l.trim().startsWith('|')) return l;
+        const cells = l.split('|');
+        const add = /^\|-/.test(l) ? '-------' : /^\| # \|/.test(l) ? ' Cond. ' : /^\| 2 \|/.test(l) || (second && /^\| 1 \|/.test(l)) ? ' integration point ' : ' — ';
+        return [...cells.slice(0, -2), add, ...cells.slice(-2)].join('|');
+      }).join('\n').replace(/(\| 2 \| JSON output[^\n]*)/, '$1\n| 3 | CSV output | `node src/total.mjs --csv 2 3` prints `total\\n5` | must not change the JSON output | 2 | — | small | — | pending |');
+      writeFileSync(b, t);
+      return b;
+    };
+    const order = (c, ids) => writeFileSync(join(c.loop, 'run.json'), JSON.stringify({ epic: 'demo', hands_off: true, order: ids }, null, 2) + '\n');
+    const twoPoints = (cmd) => ({
+      name: `${cmd} refuses a backlog with two \`integration point\` rows at the second one's line, writing nothing`,
+      src: DEMO, code: 1,
+      go: (c) => {
+        const b = point(c, { second: true });
+        const lineNo = readFileSync(b, 'utf8').split('\n').findIndex((l) => l.startsWith('| 2 |')) + 1;
+        let args = ['plan', '--item', '2'];
+        if (cmd === 'close') args = ['close', '--item', '2', '--verdict-file', APPROVE];
+        if (cmd === 'append') { const f = join(c.dir, 'f.md'); writeFileSync(f, '```loop-findings\n- major: x — a.mjs:1\n```\n'); args = ['append', '--findings-file', f]; }
+        const before = snap(c);
+        const r = run(c, args);
+        return { r, ok: same(c, before) && r.stderr.includes(`backlog.md:${lineNo}: backlog rows 1 and 2 are both the \`integration point\``) };
+      },
+    });
+    return [
+      {
+        name: 'close on the integration point prints the epic-gate line after its closed line',
+        src: DEMO, code: 0,
+        go: (c) => { point(c); const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          const lines = r.stdout.split('\n');
+          return { r, ok: lines[0].startsWith('closed item 2 — ') && lines[1].startsWith(POINT_LINE) && lines[1].includes('--epic-gate') && lines[1].includes("before the next item's design gate") }; },
+      },
+      {
+        name: 'close on a row that is not the point prints no epic-gate line',
+        src: DEMO, code: 0,
+        go: (c) => { const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          return { r, ok: r.stdout.startsWith('closed item 2 — ') && !r.stdout.includes('integration point') }; },
+      },
+      {
+        // C6: the three-item run — the point closes, its run cannot be filed until the epic gate is recorded
+        name: 'three-item run: close the point → loop-archive run refuses, .loop/ unchanged → --epic-gate → loop-archive run files it with epic_gate',
+        src: DEMO, code: 0,
+        go: (c) => {
+          point(c); order(c, [1, 2, 3]);
+          writeFileSync(join(c.loop, 'state.json'), JSON.stringify({ status: 'done', run_id: 'run-demo-2', epic: 'demo', iteration: 1, history: [] }, null, 2) + '\n');
+          const tool = (script, args) => { try { return { code: 0, out: execFileSync('node', [join(HERE, script), ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; } catch (e) { return { code: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }; } };
+          const tree = () => { const out = []; const walk = (d) => { for (const n of readdirSync(d, { withFileTypes: true })) { const p = join(d, n.name); if (n.isDirectory()) walk(p); else out.push([p, readFileSync(p, 'utf8')]); } }; walk(c.loop); return JSON.stringify(out.sort()); };
+          const closed = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          const before = tree();
+          const held = tool('loop-archive.mjs', ['run', '--dir', c.loop]);
+          const unchanged = tree() === before;
+          const gate = tool('loop-record.mjs', ['--dir', c.loop, '--epic-gate', 'integration point: 4 lines run; 0 raised; none']);
+          const filed = tool('loop-archive.mjs', ['run', '--dir', c.loop]);
+          const arch = join(c.loop, 'archive', 'run-demo-2', 'state.json');
+          const st = existsSync(arch) ? JSON.parse(readFileSync(arch, 'utf8')) : {};
+          return { r: closed, ok: closed.stdout.includes(POINT_LINE) && held.code === 1 && held.out.includes('--epic-gate') && unchanged
+            && gate.code === 0 && filed.code === 0 && !existsSync(join(c.loop, 'state.json')) && existsSync(join(c.loop, 'archive', 'run-demo-2', 'goal.md'))
+            && typeof st.epic_gate === 'object' && st.epic_gate.summary === 'integration point: 4 lines run; 0 raised; none' };
+        },
+      },
+      ...[['`integration point`', true], ['**integration point**', true], ['integration point, also X', false]].map(([cellText, announces]) => ({
+        name: `close on a row whose Cond. reads ${cellText} ${announces ? 'announces the point (markup stripped)' : 'is not the point (exact match only)'}`,
+        item6: true, src: DEMO, code: 0,
+        go: (c) => { const b = point(c); writeFileSync(b, readFileSync(b, 'utf8').replace('| integration point |', `| ${cellText} |`));
+          const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          return { r, ok: r.stdout.includes(POINT_LINE) === announces && r.stdout.startsWith('closed item 2 — ') }; },
+      })),
+      ...(() => {
+        const f = (c) => { const p = join(c.dir, 'f.md'); writeFileSync(p, '```loop-findings\n- major: x — a.mjs:1\n```\n'); return p; };
+        const row4 = (b) => (readFileSync(b, 'utf8').split('\n').filter((l) => l.startsWith('| 4 |'))[0] ?? '').split('|').map((x) => x.trim());
+        const rj = (c) => JSON.parse(readFileSync(join(c.loop, 'run.json'), 'utf8')).order;
+        return [
+          {
+            name: "append follows run.json's order, not the table's: order [1, 3, 2] with rows 1–3 done → row 4 after 2, Depends on 2",
+            item6: true, src: DEMO, code: 0,
+            go: (c) => { const b = point(c); run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+              writeFileSync(b, readFileSync(b, 'utf8').replace(/(\| 3 \| CSV output[^\n]*\| )pending \|/, '$1done |'));
+              order(c, [1, 3, 2]); const r = run(c, ['append', '--findings-file', f(c)]);
+              return { r, ok: row4(b)[5] === '2' && JSON.stringify(rj(c)) === '[1,3,2,4]' }; },
+          },
+          {
+            name: 'append with no run.json follows the table: row 3 pending → Depends on 2, the last done row',
+            item6: true, src: DEMO, code: 0,
+            go: (c) => { const b = point(c); run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+              const r = run(c, ['append', '--findings-file', f(c)]);
+              return { r, ok: row4(b)[5] === '2' && !existsSync(join(c.loop, 'run.json')) }; },
+          },
+          {
+            name: 'append on a backlog with no rows refuses at its header, writing nothing',
+            item6: true, src: DEMO, code: 1,
+            go: (c) => { const b = files(c)[0]; writeFileSync(b, '# Backlog\n| # | Sub-goal | Status |\n|---|---|---|\n'); const before = snap(c);
+              const r = run(c, ['append', '--findings-file', f(c)]);
+              return { r, ok: same(c, before) && r.stderr.includes('backlog.md:2: the backlog has no rows') }; },
+          },
+          {
+            name: 'append with an empty run.json order depends on the table\'s last row and puts the id in the order',
+            item6: true, src: DEMO, code: 0,
+            go: (c) => { const b = point(c); order(c, []); const r = run(c, ['append', '--findings-file', f(c)]);
+              return { r, ok: row4(b)[5] === '3' && JSON.stringify(rj(c)) === '[4]' && !r.stdout.includes('undefined') }; },
+          },
+        ];
+      })(),
+      twoPoints('plan'), twoPoints('close'), twoPoints('append'),
+      {
+        name: 'append after the point splices the row in after it: order [1, 2, 3] → [1, 2, 4, 3], Depends on 2, runStanding names 4',
+        src: DEMO, code: 0,
+        go: (c) => {
+          const b = point(c); order(c, [1, 2, 3]);
+          run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          const f = join(c.dir, 'f.md');
+          writeFileSync(f, readFileSync(join(FIX, 'verdicts', 'epic-gate-findings.md'), 'utf8').split('\n').filter((l) => !l.startsWith('- minor:')).join('\n'));
+          const r = run(c, ['append', '--findings-file', f]);
+          const row4 = readFileSync(b, 'utf8').split('\n').filter((l) => l.startsWith('| 4 |'))[0] ?? '';
+          const cells = row4.split('|').map((x) => x.trim());
+          const standing = runStanding(c.dir);
+          return { r, ok: JSON.stringify(JSON.parse(readFileSync(join(c.loop, 'run.json'), 'utf8')).order) === '[1,2,4,3]'
+            && cells[5] === '2' && cells[2].startsWith('integration — ') && standing && standing.next && standing.next.id === 4 };
+        },
+      },
+    ];
+  })(),
 ];
 
 let failed = 0;

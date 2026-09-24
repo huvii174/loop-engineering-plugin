@@ -60,13 +60,20 @@ verified independently.
    change must not pay for a schema migration. When torn between two tiers,
    round up. When a seed names a universal rule, or sites in two or more
    modules, the Sites rounding in the loop-engine skill's tier routing applies.
+10. **At most one row is the `integration point`** — the value of its `Cond.`
+   cell, which then holds nothing else. It is the first row whose `Depends on`
+   names two rows that share no upstream row (two chains converge there), else
+   the first row that exercises the epic end to end. No row carries it when
+   that row would be the last one: the epic's last close is reviewed anyway.
+   What runs at the point is the `loop-engineering:loop-review` skill's Epic
+   gate.
 
 ## Output contract (raw markdown — your final message IS the deliverable)
 
 ```markdown
 ## Proposed backlog
-| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Epic criterion | Risk | Tier |
-|---|----------|------------------|-----------------|------------|----------------|------|------|
+| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Epic criterion | Risk | Tier | Cond. |
+|---|----------|------------------|-----------------|------------|----------------|------|------|-------|
 
 ## Ordering rationale
 <why this order — risk-first reasoning, 3–6 sentences>

@@ -177,6 +177,7 @@ function readBacklog(file, text) {
     status: column(file, table.header.no, lower, /^status$/, twiceCol('Status')),
     title: column(file, table.header.no, lower, /sub-?goal/, twiceCol('Sub-goal')),
     epic: column(file, table.header.no, lower, /^epic criteri/, twiceCol('Epic criterion')),
+    cond: column(file, table.header.no, lower, /^cond\.?$/, twiceCol('Cond.')),
   };
   if (cols.id === -1 || cols.status === -1) return null;
   const rows = [];
@@ -188,6 +189,7 @@ function readBacklog(file, text) {
         n: Number(cell), lineIndex: r.no - 1, no: r.no, cells,
         title: cols.title >= 0 ? cells[cols.title] : '',
         epic: cols.epic >= 0 ? cells[cols.epic] : '',
+        cond: cols.cond >= 0 ? cells[cols.cond] : '',
         status: cells[cols.status],
       });
     } else if (/\d/.test(cell)) {
@@ -201,7 +203,16 @@ function readBacklog(file, text) {
       refuse(at(file, r.no, `backlog row \`${cell}\` has a \`#\` that is a word label — backlog \`#\` cells are numbers only (an integration row gets the next free number).`));
     }
   }
+  const points = rows.filter(isPoint);
+  if (points.length > 1) {
+    refuse(at(file, points[1].no, `backlog rows ${points.map((r) => r.n).join(' and ')} are both the \`integration point\` — an epic has one, so which one the epic gate follows would be a guess.`));
+  }
   return { lines: reg.lines, cols, rows, headerNo: table.header.no, header: table.header.text, last: table.last };
+}
+
+/** The epic's mid-run integration point: a `Cond.` cell that reads exactly `integration point`. */
+function isPoint(row) {
+  return row.cond.replace(/[`*_]/g, '').trim() === 'integration point';
 }
 
 /**
@@ -663,6 +674,7 @@ function append(dir, args) {
   if (findingsText === null) refuse(`cannot read the findings file ${args['findings-file']}.`);
   const findings = readFindings(args['findings-file'], findingsText);
   const { backlogFile, backlog } = epicBacklog(dir);
+  if (!backlog.rows.length) refuse(at(backlogFile, backlog.headerNo, 'the backlog has no rows — an epic gate follows closed items, and there are none.'));
   const open = backlog.rows.filter((r) => INTEGRATION.test(r.title) && !isDone(backlogFile, r));
   if (open.length) {
     refuse(at(backlogFile, open[0].no, `integration row ${open[0].n} is not done — an epic has at most two gates (D-eci-005); ` +
@@ -677,7 +689,11 @@ function append(dir, args) {
   }
   const newId = Math.max(...backlog.rows.map((r) => r.n)) + 1;
   if (run && run.order.map(Number).includes(newId)) refuse(`${runPath} already lists ${newId} in its order, but the backlog has no row ${newId}.`);
-  const after = run && run.order.length ? Number(run.order[run.order.length - 1]) : backlog.rows[backlog.rows.length - 1].n;
+  // The row runs next: after the last done id in the run's order (run.json's, else the table's) —
+  // the end of the order at the last gate, right after the point at an integration point.
+  const order = run ? run.order.map(Number) : backlog.rows.map((r) => r.n);
+  const doneIds = order.filter((id) => backlog.rows.filter((r) => r.n === id && isDone(backlogFile, r)).length);
+  const after = doneIds.length ? doneIds[doneIds.length - 1] : order.length ? order[order.length - 1] : backlog.rows[backlog.rows.length - 1].n;
   const n = findings.length;
   const lower = cellsOf(backlog.header).map((c) => c.toLowerCase());
   const cell = (name) => {
@@ -692,8 +708,9 @@ function append(dir, args) {
   const lines = backlog.lines.slice();
   lines.splice(backlog.last + 1, 0, `| ${lower.map(cell).join(' | ')} |`);
   writeFileSync(backlogFile, lines.join('\n'));
-  if (run) writeFileSync(runPath, JSON.stringify({ ...run, order: [...run.order, newId] }, null, 2) + '\n');
-  process.stdout.write(`appended integration row ${newId} — ${n} finding(s)${run ? `; run.json order now ends with ${newId}` : ''}\n`);
+  const slot = run ? run.order.map(Number).indexOf(after) + 1 : 0;
+  if (run) writeFileSync(runPath, JSON.stringify({ ...run, order: [...run.order.slice(0, slot), newId, ...run.order.slice(slot)] }, null, 2) + '\n');
+  process.stdout.write(`appended integration row ${newId} — ${n} finding(s)${run ? `; run.json order runs it after row ${after}` : ''}\n`);
   return 0;
 }
 
@@ -746,6 +763,10 @@ function main(argv) {
     writeFileSync(rollupPath, nextRollup);
     writeFileSync(join(ctx.base, 'backlog.md'), nextBacklog);
     process.stdout.write(`closed item ${item} — ${ctx.list.length} criteria met (${ids})\n`);
+    if (isPoint(ctx.row)) {
+      process.stdout.write(`item ${item} is the epic's integration point — run the epic gate (loop-review skill, Epic gate) ` +
+        'and record it with `loop-record.mjs --epic-gate` before the next item\'s design gate.\n');
+    }
     return 0;
   } catch (e) {
     if (!(e instanceof Refusal)) throw e;
@@ -754,7 +775,32 @@ function main(argv) {
   }
 }
 
-export { readBacklog, readGoal, readProven, readEpicACs, readRollup, marks };
+/**
+ * Whether the run in `dir` is its epic's integration point, from goal.md's `Epic:` line and the
+ * backlog it names: null when goal.md names no epic item or the backlog is absent; `{ refusal }`
+ * when a reader refuses; else `{ slug, item, point }`.
+ */
+function integrationPoint(dir) {
+  try {
+    const goalFile = join(dir, 'goal.md');
+    const goal = readIfExists(goalFile);
+    if (goal === null) return null;
+    const { link } = readGoal(goalFile, goal);
+    if (!link) return null;
+    if (!SLUG.test(link[1])) return null;
+    const backlogFile = join(dir, 'epics', link[1], 'backlog.md');
+    const text = readIfExists(backlogFile);
+    if (text === null) return null;
+    const backlog = readBacklog(backlogFile, text);
+    const row = backlog ? backlog.rows.filter((r) => r.n === Number(link[2]))[0] : null;
+    return { slug: link[1], item: Number(link[2]), point: Boolean(row && isPoint(row)) };
+  } catch (e) {
+    if (!(e instanceof Refusal)) throw e;
+    return { refusal: e.message };
+  }
+}
+
+export { readBacklog, readGoal, readProven, readEpicACs, readRollup, marks, integrationPoint };
 
 // Node already gives the main module's real path; argv[1] keeps the symlink (`/var` → `/private/var`), and a literal compare would skip main and exit 0 having done nothing.
-if (fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));
