@@ -29,7 +29,8 @@ contract first: `Skill(skill: "loop-engineering:loop-engine")`.
 3. Behavior by `state.json.status`:
    - `designed` or `running` → proceed (resume from the last iteration record).
    - `stopped-max-iterations` → require a new max passed as the command
-     argument; refuse otherwise.
+     argument; refuse otherwise. Who may raise it, and how often, is the budget
+     policy in the loop-engine skill.
    - `stuck` → ask the user what changed since the breaker fired; on their
      answer, set `breaker_reset_at_iteration` to the current `iteration` in
      `state.json` (this is how the breaker's counters are reset) and proceed.
@@ -40,7 +41,8 @@ contract first: `Skill(skill: "loop-engineering:loop-engine")`.
    - `stopped-user` → confirm the user wants to resume, then proceed.
 4. If the command was invoked with a number argument, write it to
    `state.json.max_iterations` before iteration 1 — the argument must survive a
-   crash. Otherwise use the stored value; if absent, 12.
+   crash. Otherwise use the stored value; if absent, 12. A later raise follows
+   the budget policy in the loop-engine skill.
 
 ## The loop
 
@@ -90,7 +92,10 @@ increment** from the design's work breakdown:
    to Template N — absolute project root, one deliverable, inputs as paths,
    forbidden actions, output contract, stop conditions — then run its six-point
    lint before spawning. A subagent cannot ask you a follow-up question; what
-   the brief omits, it guesses.
+   the brief omits, it guesses. What evidence this iteration runs — scoped to
+   the change in the middle of a goal, the full battery once at the end — is
+   the `Evidence cost` paragraph of the `loop-engineering:loop-review` skill;
+   read it before the first iteration, not only at the review gate.
 3. **Verify** — never grade your own work. Call
    `Agent(subagent_type: "loop-engineering:loop-verifier", prompt: <payload>)`
    with the payload below: Template N with the verifier's fields filled in,
@@ -124,7 +129,11 @@ increment** from the design's work breakdown:
    record's `Recall:` line>
    ```
 
-   It returns `APPROVE | REJECT | ESCALATE_HUMAN` with evidence. On APPROVE,
+   It returns `APPROVE | REJECT | ESCALATE_HUMAN` with evidence, and a
+   `### Flags` section (the verifier's Convergence rule): append each `- flag:`
+   line under the active epic's `epic.md` flags heading (add `## Flags` at the
+   end when the file has none), or to `.loop/memory/scratch/run.md` when no
+   epic is active. On APPROVE,
    tick the criterion in `.loop/goal.md` — only items under `## Success
    criteria` count as criteria. The goal is only "met" when the verifier — not
    you — has confirmed every criterion with evidence.
@@ -210,7 +219,9 @@ nobody can falsify.
 `loop-breaker.mjs` (step 0) owns the mechanical ones — max-iterations,
 stagnation, frustration, no-progress, and plateau (criteria-met count flat
 despite passing verdicts; requires `criteria_passed` recorded each iteration) —
-and its exit `2` is final. When it fires `stuck`, **diagnose before asking**:
+and its exit `2` is final: no further iteration runs (at max-iterations, the
+budget policy in the loop-engine skill says when a met item still closes).
+When it fires `stuck`, **diagnose before asking**:
 present 2–3 competing hypotheses for why the loop is stuck, each with evidence
 for/against from the iteration records, plus a recommended probe — then let the
 user pick a direction. The two stops the script cannot see are yours to detect:
@@ -245,7 +256,8 @@ confirmed findings back into this same loop as normal iterations — verifier,
 record, breaker, no side door. Minor findings go to memory scratch, never to
 iterations. The gate's summary (dimensions run and why, findings
 confirmed/refuted/fixed) goes into the final iteration record. Only a cleared
-gate writes `status: "done"`.
+gate writes `status: "done"` (at the budget cap, open findings are flags — the
+budget policy in the loop-engine skill).
 
 ## On every stop (success or not)
 

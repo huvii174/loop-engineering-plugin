@@ -117,7 +117,14 @@ at the first natural place to summarise.
 The gate is silent on every legitimate stop — the one list, which `runStanding`
 in `hooks/lib.mjs` implements: a `stuck` row, this epic's loop at `stuck` /
 `stopped-*` (a `state.json` naming another epic is a leftover and is ignored), a
-human gate next, a spent budget, every item `done`, or the file gone. **The
+human gate next, a spent budget, every item `done`, or the file gone. One
+more silence is not a stop at all: while `.loop/.agents-running/<session_id>/`
+holds a file younger than 30 minutes, the session ended its turn to wait on a
+subagent it spawned (the `agent-track` hook writes one file per running
+subagent and removes it on SubagentStop), so the gate exits without a nudge —
+at most 20 times at one position (`run.json.silence`, the gate's own counter),
+so a marker nobody removes cannot hold the gate silent.
+**The
 runner deletes `run.json` at epic close and on the user's cancel** — a file left
 behind after an archive is harmless (no backlog, no standing) but untidy. The
 memory-gate keeps its once-only block per terminal state under a run via
@@ -379,6 +386,16 @@ a goal that is already met.
 | **Advisory** | ⚙ script | any counter one short of its threshold | none — prints `ADVISORY`, exit stays `0` |
 | Verifier escalation | model | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
 | User cancel | model | user says stop | `stopped-user` |
+
+**Budget policy — one raise at most, by the user.** `max_iterations` may be
+raised once per item, and only by the user; under `--hands-off` the raise is
+written at the item's design gate as a numbered assumption in its `goal.md`,
+never at the cap and never by the runner on its own. At the cap the breaker's
+`stopped-max-iterations` still ends the iterations. An item whose criteria are
+all verifier-APPROVED then still closes: its review gate runs, the gate's open
+findings become flags (the active epic's `epic.md` flags) instead of fix
+iterations, and `done` is written. An item with any criterion not APPROVED stays
+`stopped-max-iterations`.
 
 No-progress is the backstop for thrashing where every attempt fails
 *differently* — five distinct errors from five distinct approaches — which

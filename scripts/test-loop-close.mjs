@@ -998,6 +998,16 @@ const CASES = [
       },
     }))),
   strict('a done backlog row whose `#` is a word label', B, (t) => t.replace('| 1 | CLI total', '| one | CLI total'), '| one | CLI total', 'is done but its `#` is a word label'),
+  {
+    // item 9 (D-eci-033): the verifier's `### Flags` section rides in the verdict message; its contract shape must not trip the reader
+    name: 'an APPROVE verdict carrying a contract-shaped `### Flags` block closes',
+    src: DEMO, code: 0,
+    go: (c) => {
+      const v = verdictFrom(c, APPROVE, (t) => `${t.replace(/\s*$/, '')}\n\n### Flags\n- flag: CRLF line endings in a backlog row — repro: node scripts/loop-close.mjs plan --item 2 → exit 1; refused, nothing written\n- flag: a subdirectory inside a session directory — repro: mkdir .loop/.agents-running/s1/x → exit 0; silent\n`);
+      const r = run(c, ['close', '--item', '2', '--verdict-file', v]);
+      return { r, ok: statusCell(c, 2).startsWith('done') };
+    },
+  },
   // C9 (D-eci-030): nothing that is done can leave the re-run list, and every listed text belongs to its id
   strict('a pending backlog row whose `#` is a word label (`one`)', B, (t) => t.replace(/\s*$/, '\n| one | extra | x | y | 1 | — | small | pending |\n'), '| one | extra', 'is a word label — backlog `#` cells are numbers only'),
   strict('a done row written `Done` under a word label', B, (t) => t.replace('| 1 | CLI total', '| one | CLI total').replace('done (item 1 closed)', 'Done (item 1 closed)'), '| one | CLI total', 'is done but its `#` is a word label'),

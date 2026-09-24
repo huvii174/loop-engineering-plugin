@@ -5,7 +5,7 @@
  * asserting on exit codes and output. Exits 0 when all pass. No dependencies.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -742,6 +742,113 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   d = runProj({ run: RUN, backlog: BACKLOG('done', 'done', 'done') });
   r = runHook('loop-reminder.mjs', { cwd: d });
   check('reminder: run with nothing pending → silent about the run', !r.out.includes('Open epic run'), r.out.slice(0, 120));
+}
+
+// ------------------------------------------- run-gate: silent while its own subagent runs
+{
+  const agentsDir = (d, s) => join(d, '.loop', '.agents-running', s);
+  const track = (d, event, extra = {}, env = {}) => runHook('agent-track.mjs', { cwd: d, hook_event_name: event, session_id: 's1', agent_id: 'a1', ...extra }, env);
+  const runP = (d) => { mkdirSync(join(d, '.loop', 'epics', 'demo'), { recursive: true }); return d; };
+  const BL = `# Backlog — demo\n\n| # | Sub-goal | Status |\n|---|---|---|\n| 1 | a | done |\n| 2 | b | pending |\n`;
+  const openRun = () => {
+    const d = runP(proj({ state: { status: 'done', backlog_item: 1 } }));
+    writeFileSync(join(d, '.loop', 'epics', 'demo', 'backlog.md'), BL);
+    writeFileSync(join(d, '.loop', 'run.json'), JSON.stringify({ epic: 'demo', hands_off: true, order: [1, 2] }));
+    return d;
+  };
+  const nudgeOf = (d) => JSON.parse(readFileSync(join(d, '.loop', 'run.json'), 'utf8')).nudge;
+
+  let d = openRun();
+  let t = track(d, 'SubagentStart');
+  check('agent-track: SubagentStart writes one file per agent, exits 0', t.code === 0 && existsSync(join(agentsDir(d, 's1'), 'a1')), `code=${t.code}`);
+  let r = runHook('run-gate.mjs', { cwd: d, session_id: 's1' });
+  check('run-gate: a live subagent of this session → silent, nudge untouched', r.code === 0 && nudgeOf(d) === undefined, `code=${r.code} nudge=${JSON.stringify(nudgeOf(d))}`);
+  t = track(d, 'SubagentStop');
+  check('agent-track: SubagentStop removes the file and the empty session directory', t.code === 0 && !existsSync(agentsDir(d, 's1')), `code=${t.code}`);
+  r = runHook('run-gate.mjs', { cwd: d, session_id: 's1' });
+  check('run-gate: after SubagentStop the gate blocks again', r.code === 2 && nudgeOf(d)?.count === 1, `code=${r.code}`);
+
+  d = openRun();
+  track(d, 'SubagentStart');
+  const old = (Date.now() - 31 * 60 * 1000) / 1000;
+  utimesSync(join(agentsDir(d, 's1'), 'a1'), old, old);
+  r = runHook('run-gate.mjs', { cwd: d, session_id: 's1' });
+  check('run-gate: an entry older than the stale timeout does not silence', r.code === 2, `code=${r.code}`);
+
+  d = openRun();
+  track(d, 'SubagentStart', { session_id: 's2' });
+  r = runHook('run-gate.mjs', { cwd: d, session_id: 's1' });
+  check('run-gate: another session\'s subagent does not silence', r.code === 2, `code=${r.code}`);
+
+  d = openRun();
+  track(d, 'SubagentStart');
+  r = runHook('run-gate.mjs', { cwd: d });
+  check('run-gate: a Stop input with no session_id does not silence', r.code === 2, `code=${r.code}`);
+  const rEmpty = runHook('run-gate.mjs', { cwd: d, session_id: '' });
+  const rDots = runHook('run-gate.mjs', { cwd: d, session_id: '..' });
+  check('run-gate: a session_id that is not a plain id (\'\', \'..\') does not silence (it would list the parent)', rEmpty.code === 2 && rDots.code === 2, `codes=${rEmpty.code},${rDots.code}`);
+
+  d = openRun();
+  mkdirSync(join(d, '.loop', '.agents-running'), { recursive: true });
+  writeFileSync(agentsDir(d, 's1'), 'not a directory');
+  r = runHook('run-gate.mjs', { cwd: d, session_id: 's1' });
+  check('run-gate: an unreadable record fails open (the gate still blocks)', r.code === 2, `code=${r.code}`);
+
+  d = openRun();
+  t = track(d, 'SubagentStart', { agent_id: undefined });
+  const t2 = track(d, 'SubagentStart', { session_id: undefined });
+  const t3 = track(d, 'SubagentStart', { agent_id: '../escape' });
+  check('agent-track: no agent_id, no session_id or a non-id segment → nothing written, exit 0',
+    [t, t2, t3].every((x) => x.code === 0) && !existsSync(join(d, '.loop', '.agents-running')) && !existsSync(join(d, '.loop', 'escape')), `codes=${[t, t2, t3].map((x) => x.code)}`);
+
+  d = openRun();
+  t = track(d, 'SubagentStart', {}, { LOOP_HOOKS_OFF: '1' });
+  check('agent-track: LOOP_HOOKS_OFF=1 → nothing written', t.code === 0 && !existsSync(join(d, '.loop', '.agents-running')), `code=${t.code}`);
+
+  d = proj({});
+  rmSync(join(d, '.loop'), { recursive: true, force: true });
+  t = track(d, 'SubagentStart');
+  check('agent-track: a project without .loop/ → nothing written, exit 0', t.code === 0 && !existsSync(join(d, '.loop')), `code=${t.code}`);
+
+  // two overlapping stops: one file per agent, so neither can resurrect the other's entry
+  d = openRun();
+  track(d, 'SubagentStart', { agent_id: 'a1' });
+  track(d, 'SubagentStart', { agent_id: 'a2' });
+  const stopAsync = (agent) => new Promise((res) => {
+    const c = spawn('node', [join(HOOKS, 'agent-track.mjs')], { env: { ...process.env, LOOP_HOOKS_OFF: '' } });
+    c.on('close', res);
+    c.stdin.end(JSON.stringify({ cwd: d, hook_event_name: 'SubagentStop', session_id: 's1', agent_id: agent }));
+  });
+  await Promise.all([stopAsync('a1'), stopAsync('a2')]);
+  check('agent-track: two overlapping stops leave no entry behind', !existsSync(agentsDir(d, 's1')) || readdirSync(agentsDir(d, 's1')).length === 0,
+    existsSync(agentsDir(d, 's1')) ? readdirSync(agentsDir(d, 's1')).join(',') : 'gone');
+  r = runHook('run-gate.mjs', { cwd: d, session_id: 's1' });
+  check('run-gate: after both overlapping stops the gate blocks', r.code === 2, `code=${r.code}`);
+
+  // a marker nobody removes (a crashed agent, or one written by hand) silences at most MAX_SILENCES stops at one position
+  d = openRun();
+  track(d, 'SubagentStart');
+  const codes = [];
+  for (let i = 0; i < 21; i += 1) codes.push(runHook('run-gate.mjs', { cwd: d, session_id: 's1' }).code);
+  check('run-gate: a live marker silences 20 stops at one position, then the gate nudges again',
+    codes.slice(0, 20).every((c) => c === 0) && codes[20] === 2 && nudgeOf(d)?.count === 1, `codes=${codes.join('')}`);
+
+  // a non-string id is not a path segment
+  d = openRun();
+  t = track(d, 'SubagentStart', { session_id: 7, agent_id: 8 });
+  check('agent-track: a non-string session_id/agent_id → nothing written', t.code === 0 && !existsSync(join(d, '.loop', '.agents-running')), `code=${t.code}`);
+}
+
+// ------------------------------------------------------------ hooks.json wiring
+{
+  const cfg = JSON.parse(readFileSync(join(HOOKS, 'hooks.json'), 'utf8'));
+  const scripts = (event) => (cfg.hooks[event] ?? []).flatMap((m) => m.hooks.map((h) => (h.command.match(/hooks\/([\w-]+\.mjs)/) ?? [])[1]));
+  const all = Object.keys(cfg.hooks).flatMap(scripts);
+  check('hooks.json: every command names a hook script that exists', all.length > 0 && all.every((f) => f && existsSync(join(HOOKS, f))), all.join(','));
+  check('hooks.json: SubagentStart and SubagentStop run agent-track.mjs for every agent type',
+    ['SubagentStart', 'SubagentStop'].every((e) => (cfg.hooks[e] ?? []).some((m) => m.matcher === '*' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command)))),
+    JSON.stringify({ start: cfg.hooks.SubagentStart, stop: cfg.hooks.SubagentStop }).slice(0, 200));
+  check('hooks.json: Stop runs run-gate.mjs', (cfg.hooks.Stop ?? []).some((m) => m.hooks.some((h) => /hooks\/run-gate\.mjs"?$/.test(h.command))), '');
 }
 
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });

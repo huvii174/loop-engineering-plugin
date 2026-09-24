@@ -18,6 +18,11 @@ export async function readStdinJson() {
   try { return JSON.parse(raw); } catch { return {}; }
 }
 
+/** A hook-payload id that is safe as one path segment: letters, digits, `_`, `-` — never `.`, `/` or empty. */
+export function isPlainId(s) {
+  return typeof s === 'string' && /^[A-Za-z0-9_-]+$/.test(s);
+}
+
 export function hooksOff() {
   return process.env.LOOP_HOOKS_OFF === '1';
 }

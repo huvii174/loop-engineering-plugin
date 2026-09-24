@@ -107,6 +107,28 @@ never modify the real project during verification.
    the site in front of the implementer and left standing at the sibling site
    next to it.
 
+## Convergence — a constructed shape is a flag, not a REJECT
+
+This section governs one kind of finding: an input shape the code mishandles,
+or a code mutant that survives. A finding of that kind REJECTs
+only when the shape occurs in a file of the project under verification (tracked
+in git, or its own `.loop/` run state even where `.gitignore` excludes it), or
+in one that `commands/`, `skills/` or `agents/` instruct a model or person to
+write — cite the file or the instruction. A shape that exists only when
+constructed against the code (unicode lookalikes, CRLF endings in a repo that
+has none, trailing whitespace after a table row's last `|`), and a mutant that
+stays green, or a clause shown unmet, only on such a shape, is a **flag**: it
+goes under `### Flags` with a one-line repro and neither REJECTs nor counts
+against a criterion.
+
+It never relaxes what checks 1–9 demand as written. An unswept site is a
+REJECT wherever it lives; a cited test that cannot go red is still
+ESCALATE_HUMAN; a `Must not:` broken on any input is still broken.
+
+Without it a verifier never converges on a reader: one goal spent nine
+iterations, each REJECT finding one more malformed input of the same class,
+almost none of which occurred in any file.
+
 ## Match the evidence to the surface
 
 Before you run anything, name the surface the change touches and pick the
@@ -175,6 +197,9 @@ passing test suite does not substitute for a failed reconciliation.
   → <each live hit and design-time hit, matched to its Sweep line>; when
   skipped, why the check does not apply
 
+### Flags
+- flag: <shape> — repro: <command> → exit <n>; <what it printed or wrote>
+
 ### If REJECT
 - Reasons: <numbered, specific>
 - Suggested next step for the implementer
@@ -186,6 +211,11 @@ passing test suite does not substitute for a failed reconciliation.
 - Why environmental, not behavioral: <the absent binary / unset credential /
   refused port / identical failure on unmodified code>
 ```
+
+One `- flag:` line per flag under Convergence, or the single line `- none`. A
+flag line never names a criterion id and never uses the words met, unmet or
+not met: `scripts/loop-close.mjs` reads this whole message, and such a line
+would make it refuse a close every criterion earned.
 
 ## Rules
 

@@ -98,6 +98,7 @@ stdlib or existing project utilities.
 ## Findings (max 5, severity-ordered; empty section if clean)
 - **[blocker|major|minor]** <one-line defect> — <file:line> — <concrete failure:
   input/state → wrong outcome> — <smallest fix>
+  Repro: <command> → exit <n>; <what it printed or wrote>   (optional)
 ## Clean
 <what was checked and found sound — one line per area>
 ```
@@ -116,8 +117,13 @@ through Step 4, Step 5, and the summary.
 ## Step 4 — Refute before you fix
 
 Findings are claims, not facts; parallel reviewers produce plausible-but-wrong
-findings, and every false finding fixed is a wasted iteration. For each
-**blocker/major** finding, spawn a fresh-context refuter:
+findings, and every false finding fixed is a wasted iteration. First judge each
+blocker/major by the verifier's convergence rule (`agents/loop-verifier.md`,
+Convergence): a finding on a constructed shape is a flag, not a blocker. A
+finding that carries a `Repro:` line is confirmed or dropped by running that
+command yourself — confirmed when the exit code and output show the failure it
+names. For each remaining **blocker/major** finding (one with no `Repro:`),
+spawn a fresh-context refuter:
 *"Try to refute this finding with evidence from the code: <finding>. Default to
 refuted if the failure scenario cannot actually occur."* Findings the refuter
 kills are dropped (logged in the iteration record with the refutation). **minor**
@@ -128,8 +134,8 @@ findings skip refutation and go straight to memory scratch — never to iteratio
 Each surviving blocker/major becomes a **normal loop iteration**: implement the
 fix → `loop-verifier` verdict → record → `loop-breaker` check. Review findings
 get no shortcut past the gates; the breaker still bounds the whole run — if
-review fixes exhaust the iteration budget, the loop stops honestly as
-`stopped-max-iterations` rather than silently expanding it.
+review fixes exhaust the iteration budget, the budget policy in the loop-engine
+skill decides what happens next — never a silent expansion.
 
 After the fix iterations, **do not re-run the full gate** — re-run only the
 dimension(s) whose findings were fixed, once, and with a **fresh reviewer
@@ -137,6 +143,15 @@ instance**: the re-reviewer must not be the conversation that produced round
 one's findings, or it anchors on its own prior judgment and rubber-stamps the
 fix. A second full sweep on an already swept diff is where review cost runs
 away.
+
+**Evidence cost, across the whole goal.** An iteration in the middle of a goal
+runs the mutation checks of the functions it changed, its new test cases and the
+suite of the file it changed. Every mutation check, every suite, and the
+before/after red-green check of every test (flip the expected result and watch
+the test fail) run once per goal, on the final files, before the verifier that
+claims the last criterion — and again only if a later iteration changes those
+files. Re-running all of it on every iteration re-proves what did not move; on
+one ten-iteration goal it was most of the cost.
 
 ## Step 6 — Then, and only then, `done`
 
@@ -154,7 +169,8 @@ clean gate records that it was clean; silence is not a result.
 
 
 Gate clears (no unrefuted blocker/major) → write `status: "done"` and proceed to
-memory compounding. Findings worth keeping (a real gotcha, a pattern, a dead
+memory compounding. At the budget cap, open findings are flags rather than fix
+iterations (the budget policy in the loop-engine skill). Findings worth keeping (a real gotcha, a pattern, a dead
 hypothesis from a refuted fix) go into scratch for distillation; the review
 summary (dimensions run, findings confirmed/refuted/fixed) goes into the final
 iteration record.

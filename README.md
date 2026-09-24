@@ -28,7 +28,7 @@ evidence-routing and memory-lifecycle rules are adapted from
 | agent | `loop-verifier` | per-iteration verdict, reject-by-default, owns the evidence routing table; check 8 mutates each cited test to prove it can go red |
 | agent | `plan-critic` | tenth man against the signed-off design, before any iteration runs |
 | agent | `epic-planner` | proposes the backlog; never designs, never edits |
-| hook | `boundary-gate` · `memory-gate` · `run-gate` · `loop-reminder` · `memory-recall` | the deterministic layer (see below) |
+| hook | `boundary-gate` · `memory-gate` · `run-gate` · `agent-track` · `loop-reminder` · `memory-recall` | the deterministic layer (see below) |
 | script | `loop-breaker.mjs` | the circuit breaker, as code rather than as a prompt |
 | script | `loop-record.mjs` | the only writer of `state.json.history` — holds the verdict enum, reconciles the recall inbox, refuses rather than half-writes |
 | script | `loop-archive.mjs` | run/epic archiving, hygiene sweep, retention — deterministic, so the layout cannot drift (`run` · `epic` · `hygiene` · `prune`; all support `--dry-run`, `prune` is dry until `--yes`) |
@@ -125,7 +125,7 @@ wearing a disguise.
 
 ### Hooks — enforcement, not capture
 
-Four deterministic hooks close the gaps prompts can't: everything else in
+Six deterministic hooks close the gaps prompts can't: everything else in
 this plugin runs *inside* the loop, so nothing could catch a session that ends
 mid-habit — or one that never typed a slash command at all. All are
 stat/glob/string checks only (no model calls), exit in microseconds when a
@@ -137,13 +137,14 @@ project has no `.loop/`, **fail open** on any error, and can be disabled with
 | `boundary-gate` | PreToolUse (Edit/Write) | While a loop is `running`, blocks edits to paths under `Do not touch:` lines in goal.md's `## Global boundaries` — a Must-not upgraded from verifier-caught to mechanically impossible |
 | `memory-gate` | Stop | Blocks ending the session (once) when the loop reached a terminal state but `.loop/memory/` wasn't touched afterwards, scratch was never distilled, recalled entries were never accounted for in a `Recall:` line, or an `_index.md` is over its reading budget. **Ad-hoc branch:** with no loop involved, if the session edited files while working through errors and captured nothing, nudges once for a one-liner in `scratch/adhoc.md` |
 | `run-gate` | Stop | While `.loop/run.json` names an epic run and its backlog still has an item not `done`, blocks ending the session and names the next item — the runner's continuity as code rather than prose. Silent on every legitimate stop and bounded by a nudge cap — both defined once, in the loop-engine skill's `run.json` section |
+| `agent-track` | SubagentStart / SubagentStop | Keeps one empty file per running subagent under `.loop/.agents-running/<session>/`, so `run-gate` stays silent while the session waits on an agent it spawned (a file older than 30 minutes no longer counts). Always exits 0; writes nothing without a plain `session_id` and `agent_id`; the silence is capped at 20 stops per position |
 | `loop-reminder` | SessionStart | One context line when the project has an open (`running`/`stuck`) loop, one more when `.loop/run.json` holds an open epic run (progress, next item, the resume command), plus a **memory digest** (what `.loop/memory/` holds) so ad-hoc sessions know the store exists |
 | `memory-recall` | UserPromptSubmit | **Ambient recall** — keyword-matches the indexes against each (non-slash) user prompt. A strong match arrives with its **body already inlined**; weaker ones arrive as a trigger plus the exact `grep` that opens the body — a pointer nobody follows is a recall that did not happen. 5-entry budget, labeled supplementary, injected IDs logged to `.loop/.recall-log` |
 
 Deliberately NOT hooks: memory *distillation* (needs judgment — the ad-hoc nudge
 collects raw one-liners, but only `/loop-engineering:memory` turns scratch into
 durable entries) and self-evaluation (the breaker already runs as code inside the
-loop). Verify with `node scripts/test-hooks.mjs` (59 checks); the scripts have
+loop). Verify with `node scripts/test-hooks.mjs` (122 checks); the scripts have
 their own suites — `test-loop-breaker.mjs` (42), `test-loop-archive.mjs` (49),
 `test-migrate-memory.mjs` (87).
 

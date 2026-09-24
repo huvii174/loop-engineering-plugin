@@ -100,7 +100,8 @@ For each item in topo order:
   runner is halted. A stop that keeps recurring at the same item is a stop with
   a cause; find it rather than restart the counter.
 - Every item's own `max_iterations` stands — the runner never raises a budget
-  to force an item through.
+  to force an item through. Who may raise one, and how a met item closes at
+  the cap, is the budget policy in the loop-engine skill.
 
 ## Parallel execution — opt-in, worktrees only
 
