@@ -186,7 +186,8 @@ function criterionMismatch(record, criterion) {
  *
  * Required on every review fix, and on a record whose targeted criterion
  * carries `Sites:` in `.loop/goal.md` (shape: the loop-engine skill, "Sites and
- * Sweep"). `Sites: none (<reason>)` is the visible opt-out and requires nothing.
+ * Sweep"). `Sites: none (<reason>)` is the visible opt-out: it waives the
+ * design-time sweep, never a review fix's.
  * The criterion's block is found from `--criterion`, never guessed: an id-shaped
  * value matches a block header as a word, a sentence matches the header or the
  * block's `Done when:` line. When goal.md carries `Sites:` and no single block

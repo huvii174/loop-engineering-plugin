@@ -126,11 +126,11 @@ re-runs the AC's text as written.
 **`.loop/epics/<epic-slug>/backlog.md`**
 ```markdown
 # Backlog — <epic name>
-| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Tier | Cond. | Status |
-|---|----------|------------------|-----------------|------------|------|-------|--------|
-| 0 | <the production path writes one real row> | <table, column, value> | <boundary> | — | small | — | pending |
-| 1 | <slice>  | <measurable>     | <boundary>      | 0          | small | — | pending |
-| 2 | <slice>  | <measurable>     | <boundary>      | 1          | medium | <probe that may make this unnecessary> | pending |
+| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Epic criterion | Tier | Cond. | Status |
+|---|----------|------------------|-----------------|------------|----------------|------|-------|--------|
+| 0 | <the production path writes one real row> | <table, column, value> | <boundary> | — | AC1 | small | — | pending |
+| 1 | <slice>  | <measurable>     | <boundary>      | 0          | AC1, AC2 | small | — | pending |
+| 2 | <slice>  | <measurable>     | <boundary>      | 1          | —   | medium | <probe that may make this unnecessary> | pending |
 ```
 Status enum: `pending | designed | running | done | stuck`. Tier routes process
 depth downstream (loop-engine skill has the table); the design gate inherits it.

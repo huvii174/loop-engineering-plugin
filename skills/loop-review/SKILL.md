@@ -183,7 +183,10 @@ the run's order that is not an integration row has closed (`loop-close.mjs
 close` exit 0), before the epic retro — the retro waits for any integration row
 it appends. An integration row (Sub-goal opening `integration — `, the prefix
 `append` writes) skips it, and `append` refuses a second row while one is open:
-a later gate's findings go to the user, not onto another row.
+a later gate's findings go to the user, not onto another row. `loop-close.mjs
+close` names the gate on the row whose close leaves every other
+non-integration row done, `loop-archive.mjs run` holds that row's run, and
+`loop-archive.mjs epic` holds the epic, until `--epic-gate` is recorded.
 
 It also runs once mid-epic, when the row whose `Cond.` reads `integration point`
 has closed (`loop-close.mjs close` says so): the same charter over the items

@@ -293,13 +293,13 @@ the grep's own `-n` output, pasted, so each hit keeps its text; it is what the
 design saw, and a hit that appears later is visible as new. When no grep
 can enumerate the sites, write `Sites: none (<reason>)` instead: the omission
 stays visible, the tenth man attacks the reason, and the criterion is exempt
-from the sweep.
+from the design-time sweep — a review fix on it still sweeps its own grep.
 
 **`## Sweep`** is a block in the verifier payload, written onto the record's one
 `Sweep:` line with its hits separated by `;` — the recorder reads that line
-only. It is required when a targeted criterion carries `Sites:`, and on every
-review fix — a review fix on a criterion without `Sites:` writes its own
-grep for the defect's shape.
+only. It is required when a targeted criterion carries a `Sites:` grep, and on
+every review fix — a review fix on a criterion without one (no `Sites:`, or
+`Sites: none`) writes its own grep for the defect's shape.
 
 ```markdown
 ## Sweep
@@ -313,10 +313,8 @@ The grep's live hits and the design-time hits each get one line. A design-time
 hit that has moved is written at its live number, with the design number in
 its reason (`was :160`); how the verifier matches it is check 9's.
 `fixed | held | not-this-class` is the whole vocabulary, and each carries its
-reason. The verifier re-runs the grep itself (its check 9): from `goal.md`
-when the criterion carries `Sites:`, never from the payload; from the payload
-only for a review fix without `Sites:`, and then it judges whether the grep
-reaches the defect's shape.
+reason. The verifier re-runs the grep itself — where it takes it from is its
+check 9.
 
 ## Iteration discipline
 

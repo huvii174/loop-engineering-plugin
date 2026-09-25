@@ -90,8 +90,10 @@ is the feedback signal `epic-planner` needs — without it every breakdown start
 from zero.
 
 **If this run closed the last backlog item, write the Epic retro** in that same
-file: which slices were wrong (and the signal that would have caught it at
-breakdown time), which seed `Done when:` lines didn't survive contact, whether
+file — once the epic gate is recorded and any integration row it appended has
+closed (`loop-engineering:loop-review` skill, Epic gate): which slices were
+wrong (and the signal that would have caught it at breakdown time), which seed
+`Done when:` lines didn't survive contact, whether
 risk-first ordering held, and **exactly one change for the next breakdown**. Set
 the rollup's `status: done`.
 

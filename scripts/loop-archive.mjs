@@ -31,7 +31,7 @@
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { integrationPoint } from './loop-close.mjs';
+import { integrationPoint, epicLinkOf, epicStanding } from './loop-close.mjs';
 
 /** What a finished run leaves behind at the top of `.loop/`. */
 const RUN_ITEMS = ['goal.md', 'design.md', 'prompt.md', 'state.json', 'iterations'];
@@ -179,22 +179,59 @@ export function planRun(dir, runId, { force = false, allowGaps = false } = {}) {
       { waivedByAllowGaps: true }
     ));
   }
-  // The epic's integration point: its epic gate runs before the next item's design gate, and that
-  // design gate archives this run first — so the run leaves only once the gate is on its state.
+  // The epic's integration point and its last row: the epic gate runs once each closes, before the
+  // next design gate (the point) or the retro and the epic archive (the last row) — so the run
+  // leaves only once the gate is on its state.
   const warnings = [];
   const state = parseJson(readIfExists(join(dir, 'state.json')));
   if (state && state.status === 'done' && !(state.epic_gate && typeof state.epic_gate === 'object')) {
     const p = integrationPoint(dir);
     if (p?.refusal) {
       warnings.push(`not checked for an epic integration point — loop-close's reader refused: ${p.refusal}`);
-    } else if (p?.point) {
+    } else if (p?.point || p?.last) {
       refusals.push(refusal(
-        `item ${p.item} is epic ${p.slug}'s integration point and state.json has no epic_gate — run the epic gate ` +
+        `item ${p.item} is epic ${p.slug}'s ${p.last ? 'last row' : 'integration point'} and state.json has no epic_gate — run the epic gate ` +
         '(loop-engineering:loop-review skill, Epic gate) and record it with `loop-record.mjs --epic-gate "<summary>"`, then archive.'
       ));
     }
   }
   return { kind: 'run', actions, refusals, notes, warnings, target, staging, force, gaps, allowGaps };
+}
+
+/**
+ * An epic is filed once its rows are done and the last close's epic gate is on a `done` run — the
+ * live run in `dir` or an archived one — of a non-integration row. The integration point's own run
+ * counts only when the point is also the last row of the run's order: otherwise its gate is the
+ * point's, not the last close's. Which row closed last is not re-derived here — rows can close out
+ * of order. An abandoned epic (its rollup says so) or one with no backlog is filed with a note.
+ */
+function epicGateRefusals(dir, slug, rollup, notes) {
+  if (/^status:\s*abandoned\b/m.test(readIfExists(rollup) ?? '')) {
+    notes.push(`${slug} is abandoned (its rollup says so) — filed without the epic-gate check`);
+    return [];
+  }
+  const standing = epicStanding(dir, slug);
+  if (standing === null) {
+    notes.push(`${slug} has no backlog — filed without the epic-gate check`);
+    return [];
+  }
+  if (standing.refusal) return [refusal(`${slug}'s backlog could not be read — ${standing.refusal}`)];
+  if (standing.open.length) {
+    return [refusal(`${slug} still has rows not done (${standing.open.join(', ')}) — close them (an integration row the epic gate appended included) before filing the epic, or mark its rollup \`status: abandoned\` if the epic was dropped`)];
+  }
+  const runs = [dir, ...(isDir(join(dir, 'archive')) ? readdirSync(join(dir, 'archive')).filter((n) => !n.startsWith('.')).map((n) => join(dir, 'archive', n)) : [])];
+  const counts = standing.main.filter((n) => n !== standing.point || n === standing.last);
+  const gated = runs.filter((r) => {
+    const link = epicLinkOf(readIfExists(join(r, 'goal.md')));
+    const state = parseJson(readIfExists(join(r, 'state.json')));
+    return link && link.slug === slug && counts.includes(link.item) && state && state.status === 'done'
+      && state.epic_gate && typeof state.epic_gate === 'object';
+  });
+  if (!gated.length) {
+    return [refusal(`no done run of ${slug}'s rows (the integration point's excepted unless it is the last) carries the last close's epic_gate — ` +
+      'run the epic gate (loop-engineering:loop-review skill, Epic gate) and record it with `loop-record.mjs --epic-gate "<summary>"` on the last row\'s run while it is live, before `loop-archive.mjs run` files it; then file the epic')];
+  }
+  return [];
 }
 
 function parseJson(raw) {
@@ -312,6 +349,8 @@ export function planEpic(dir, slug) {
       `${to} already exists — check it, then re-run with --force to replace it`, { waivedByForce: true }
     ));
   }
+
+  refusals.push(...epicGateRefusals(dir, slug, rollup, notes));
 
   const active = (readIfExists(join(dir, 'active-epic')) ?? '').split('\n')[0].trim();
   if (active === slug) notes.push(`${join(dir, 'active-epic')} still points at ${slug} — clear it after this`);

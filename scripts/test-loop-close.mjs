@@ -1599,6 +1599,57 @@ const CASES = [
       },
     ];
   })(),
+  // row 10: close names the last gate — the last non-integration row, every other one done
+  ...(() => {
+    const LAST_LINE = "item 2 closes the epic's last row — run the epic gate (loop-review skill, Epic gate)";
+    const cond = (c, row2Cond) => { const b = files(c)[0];
+      writeFileSync(b, readFileSync(b, 'utf8').split('\n').map((l) => (!l.trim().startsWith('|') ? l : /^\|-/.test(l) ? l.replace(/\|$/, '|-------|')
+        : l.replace(/\| ([^|]*) \|$/, (m, st) => `| ${st === 'Status' ? 'Cond.' : /^\| 2 \|/.test(l) ? row2Cond : '—'} | ${st} |`))).join('\n')); };
+    return [
+      {
+        name: 'close on the last row prints the last-gate line (no "integration point" in it), after its closed line',
+        src: DEMO, code: 0,
+        go: (c) => { const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]); const lines = r.stdout.split('\n');
+          return { r, ok: lines[0].startsWith('closed item 2 — ') && lines[1].startsWith(LAST_LINE) && lines[1].includes('--epic-gate') && lines[1].includes('before the epic retro') && !r.stdout.includes('integration point') && lines[2] === '' }; },
+      },
+      {
+        name: 'close on a row that is both the point and the last row prints the last-gate line only',
+        src: DEMO, code: 0,
+        go: (c) => { cond(c, 'integration point'); const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]);
+          return { r, ok: r.stdout.includes(LAST_LINE) && !r.stdout.includes('integration point') && r.stdout.split('\n').filter((l) => l.includes('epic gate')).length === 1 }; },
+      },
+      {
+        name: 'close on an earlier row (a later non-integration row pending) prints no last-gate line',
+        src: DEMO, code: 0,
+        go: (c) => { const b = files(c)[0]; writeFileSync(b, readFileSync(b, 'utf8').replace(/(\| 2 \| JSON output[^\n]*)/, '$1\n| 3 | CSV | x | y | 2 | — | small | pending |'));
+          const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]); return { r, ok: r.stdout.startsWith('closed item 2 — ') && !r.stdout.includes("last row") }; },
+      },
+      {
+        name: 'close on an integration row prints no last-gate line',
+        src: DEMO, code: 0,
+        go: (c) => { const b = files(c)[0]; writeFileSync(b, readFileSync(b, 'utf8').replace('| 2 | JSON output |', '| 2 | integration — 1 finding(s) from the epic gate |'));
+          const r = run(c, ['close', '--item', '2', '--verdict-file', APPROVE]); return { r, ok: r.stdout.startsWith('closed item 2 — ') && !r.stdout.includes('epic gate') }; },
+      },
+    ];
+  })(),
+  {
+    // row 10: the backlog template `breakdown` writes carries the `Epic criterion` column the close reads
+    name: "breakdown's backlog template, filled in, plans: its `Epic criterion` column lets row 0 claim AC1",
+    src: DEMO, code: 0,
+    go: (c) => {
+      const doc = readFileSync(join(HERE, '..', 'commands', 'breakdown.md'), 'utf8');
+      const after = doc.slice(doc.indexOf('**`.loop/epics/<epic-slug>/backlog.md`**'));
+      const block = after.slice(after.indexOf('```markdown\n') + 12, after.indexOf('\n```', after.indexOf('```markdown\n') + 12));
+      const base = join(c.loop, 'epics', 'tpl');
+      mkdirSync(base, { recursive: true });
+      writeFileSync(join(base, 'backlog.md'), block.replace(/<[^>]*>/g, 'x') + '\n');
+      writeFileSync(join(base, 'epic.md'), '# Epic: tpl\n\n## Epic acceptance criteria (measurable)\n- [ ] AC1 — x\n      Done when: `true`\n- [ ] AC2 — y\n      Done when: `true`\n');
+      writeFileSync(join(c.loop, 'active-epic'), 'tpl\n');
+      writeFileSync(join(c.loop, 'goal.md'), 'Epic: tpl — backlog item #0\n\n# Goal\nx\n\n## Success criteria (verifiable)\n- [ ] C1 x\n      Done when: `true`\n');
+      const r = run(c, ['plan', '--item', '0']);
+      return { r, ok: block.includes('| Epic criterion |') && r.stdout.includes('AC1 (also claimed by row 1)') && r.stdout.includes('## item-0/C1\n') };
+    },
+  },
 ];
 
 let failed = 0;

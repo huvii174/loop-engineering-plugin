@@ -215,6 +215,12 @@ function isPoint(row) {
   return row.cond.replace(/[`*_]/g, '').trim() === 'integration point';
 }
 
+/** The epic's last row: not an integration row, and every other non-integration row is done. */
+function isLast(file, backlog, row) {
+  if (INTEGRATION.test(row.title)) return false;
+  return backlog.rows.filter((r) => r.n !== row.n && !INTEGRATION.test(r.title) && !isDone(file, r)).length === 0;
+}
+
 /**
  * Done: the Status opens with `done` (any case) once `` ` `` `*` `_` are gone.
  * A `done` that opens the cell only behind markup — an emoji, `:shortcode:`, entity,
@@ -763,7 +769,10 @@ function main(argv) {
     writeFileSync(rollupPath, nextRollup);
     writeFileSync(join(ctx.base, 'backlog.md'), nextBacklog);
     process.stdout.write(`closed item ${item} — ${ctx.list.length} criteria met (${ids})\n`);
-    if (isPoint(ctx.row)) {
+    if (isLast(join(ctx.base, 'backlog.md'), ctx.backlog, ctx.row)) {
+      process.stdout.write(`item ${item} closes the epic's last row — run the epic gate (loop-review skill, Epic gate) ` +
+        'and record it with `loop-record.mjs --epic-gate` before the epic retro and the epic\'s filing.\n');
+    } else if (isPoint(ctx.row)) {
       process.stdout.write(`item ${item} is the epic's integration point — run the epic gate (loop-review skill, Epic gate) ` +
         'and record it with `loop-record.mjs --epic-gate` before the next item\'s design gate.\n');
     }
@@ -793,14 +802,56 @@ function integrationPoint(dir) {
     if (text === null) return null;
     const backlog = readBacklog(backlogFile, text);
     const row = backlog ? backlog.rows.filter((r) => r.n === Number(link[2]))[0] : null;
-    return { slug: link[1], item: Number(link[2]), point: Boolean(row && isPoint(row)) };
+    return { slug: link[1], item: Number(link[2]), point: Boolean(row && isPoint(row)), last: Boolean(row && isLast(backlogFile, backlog, row)) };
   } catch (e) {
     if (!(e instanceof Refusal)) throw e;
     return { refusal: e.message };
   }
 }
 
-export { readBacklog, readGoal, readProven, readEpicACs, readRollup, marks, integrationPoint };
+/** The `Epic: <slug> — backlog item #N` line of a goal.md's text, or null — no other shape is read. */
+function epicLinkOf(text) {
+  const m = (text ?? '').match(new RegExp(EPIC_LINK.source, 'm'));
+  return m ? { slug: m[1], item: Number(m[2]) } : null;
+}
+
+/**
+ * Where an epic stands once its rows close: null without a backlog; `{ refusal }` when a reader
+ * refuses; else `{ open, main, point, last }` — the rows not done, the non-integration ids, the
+ * integration point's id (or null), and the last non-integration id of the run's order (run.json's
+ * when it names this epic and holds one, else the table's).
+ */
+function epicStanding(dir, slug) {
+  try {
+    if (!SLUG.test(slug)) return null;
+    const backlogFile = join(dir, 'epics', slug, 'backlog.md');
+    const text = readIfExists(backlogFile);
+    if (text === null) return null;
+    const backlog = readBacklog(backlogFile, text);
+    if (!backlog) refuse(`${backlogFile} has no table with \`#\` and \`Status\` columns.`);
+    const runText = readIfExists(join(dir, 'run.json'));
+    let order = backlog.rows.map((r) => r.n);
+    if (runText !== null) {
+      let run = null;
+      try { run = JSON.parse(runText); } catch { refuse(`${join(dir, 'run.json')} is not JSON — which row is last would be a guess.`); }
+      if (run && run.epic === slug && Array.isArray(run.order)) order = run.order.map(Number);
+    }
+    const mainOf = (ids) => ids.filter((n) => backlog.rows.filter((r) => r.n === n && !INTEGRATION.test(r.title)).length);
+    const inOrder = mainOf(order).length ? mainOf(order) : mainOf(backlog.rows.map((r) => r.n));
+    const points = backlog.rows.filter(isPoint).map((r) => r.n);
+    return {
+      open: backlog.rows.filter((r) => !isDone(backlogFile, r)).map((r) => r.n),
+      main: mainOf(backlog.rows.map((r) => r.n)),
+      point: points.length ? points[0] : null,
+      last: inOrder.length ? inOrder[inOrder.length - 1] : null,
+    };
+  } catch (e) {
+    if (!(e instanceof Refusal)) throw e;
+    return { refusal: e.message };
+  }
+}
+
+export { readBacklog, readGoal, readProven, readEpicACs, readRollup, marks, integrationPoint, epicLinkOf, epicStanding };
 
 // Node already gives the main module's real path; argv[1] keeps the symlink (`/var` → `/private/var`), and a literal compare would skip main and exit 0 having done nothing.
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));

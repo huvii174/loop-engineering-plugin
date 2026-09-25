@@ -49,7 +49,8 @@ earlier one's proven criterion and nothing re-ran it.
   nothing. Strict readers refuse an unclassified line at `<file>:<line>`.
   `/loop-engineering:loop` runs it at every epic item's stop (plan → one fresh
   verifier → `close`; a refusal is the next review-fix iteration), and
-  `breakdown`'s AC template gives each epic AC a `Done when:` to re-run.
+  `breakdown`'s AC template gives each epic AC a `Done when:` to re-run, and
+  its backlog template the `Epic criterion` column the close reads.
 - **`Kind: dated`** in `proven.md` — a criterion bound to a moment (an archived
   design, a spawn-time condition) is printed as context, not re-run. An AC also
   claimed by a later, not-done row is re-run only at the last claimer's close.
@@ -62,14 +63,21 @@ earlier one's proven criterion and nothing re-ran it.
   left, logic drifting apart, an invariant a later item broke. Confirmed
   findings become one numbered `integration — ` row (`loop-close.mjs append`)
   on the backlog and `run.json`'s order, run before the retro;
-  `loop-record.mjs --epic-gate` records it.
+  `loop-record.mjs --epic-gate` records it. The last close is held like the
+  integration point: on the row whose close leaves the others done, `close`
+  names the gate and `loop-archive.mjs run` refuses its run without it;
+  `loop-archive.mjs epic` refuses while a row is open or no done run of a
+  non-integration row carries the gate — the integration point's own run
+  counting only when the point is last in the run's order (an abandoned epic
+  is filed with a note).
 - **The integration point** — `epic-planner` may mark one row `integration
   point` in `Cond.`; the same gate runs when it closes, and
   `loop-archive.mjs run` refuses to file that run until `--epic-gate` is
   recorded. Its integration row runs next.
 - **The verifier converges** — a finding on a shape that occurs only in a
   constructed input is a `- flag:` line, not a REJECT (loop-verifier,
-  Convergence); a reviewer finding may carry a `Repro:`, and one that does is
+  Convergence); check 9 runs on every review fix, `Sites: none` or not; a
+  reviewer finding may carry a `Repro:`, and one that does is
   confirmed or dropped by running it (the rest still go to a refuter); a goal
   runs its full evidence battery once, not every iteration.
 - **Budget policy** (loop-engine skill) — `max_iterations` is raised once, by

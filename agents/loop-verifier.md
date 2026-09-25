@@ -90,10 +90,11 @@ never modify the real project during verification.
    executed in production across four merged items.
 
 9. **Every site is swept.** Take the grep from `.loop/goal.md` when the
-   targeted criterion carries a `Sites:` line — read it under the criterion
+   targeted criterion carries a `Sites:` grep — read it under the criterion
    whose `Done when:` the payload quotes; the payload never supplies it. On a
-   review fix whose criterion carries no `Sites:`, take the grep from the
-   payload's `## Sweep` instead, and judge its shape, not its hit count: a
+   review fix whose criterion carries no `Sites:` grep (none, or
+   `Sites: none (<reason>)`), take the grep from the payload's `## Sweep`
+   instead, and judge its shape, not its hit count: a
    grep written to match only the one line the finding named is a REJECT; a
    broader grep that returns only that line is evidence the defect was
    isolated. Run the grep yourself at the project root. Then hold
@@ -116,9 +117,9 @@ never modify the real project during verification.
    proof is the command as run, its exit code and its stderr — not the
    environmental block the Rules below ask of other escalations.
 
-   Skip this check when the criterion says `Sites: none (<reason>)`, or
-   carries no `Sites:` line and the iteration is not a review fix, and say
-   so. The shape of `Sites:` and `## Sweep` lives in
+   Skip this check only when the iteration is not a review fix and the
+   criterion says `Sites: none (<reason>)` or carries no `Sites:` line, and
+   say so. The shape of `Sites:` and `## Sweep` lives in
    the loop-engine skill, Sites and Sweep. This check exists because the
    failure it catches is the most expensive to find late: the rule fixed at
    the site in front of the implementer and left standing at the sibling site

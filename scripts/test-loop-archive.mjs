@@ -177,6 +177,179 @@ function skip(name, why) {
   }
 }
 
+// ------------------------------------ run and epic: the epic's last row (row 10)
+{
+  // rows 1–2 done, row 3 the last non-integration row, row 4 an integration row
+  const LAST = (row3 = 'done (closed by loop-close)', row4 = 'done (closed by loop-close)') => [
+    '# Backlog — Demo',
+    '| # | Sub-goal | Done when (seed) | Must not (seed) | Depends on | Epic criterion | Tier | Cond. | Status |',
+    '|---|---|---|---|---|---|---|---|---|',
+    '| 1 | CLI total | x | y | — | AC1 | small | — | done |',
+    '| 2 | JSON output | x | y | 1 | AC1 | small | integration point | done |',
+    `| 3 | CSV output | x | y | 2 | — | small | — | ${row3} |`,
+    `| 4 | integration — 1 finding(s) from the epic gate | x | — | 3 | — | small | — | ${row4} |`,
+    '',
+  ].join('\n');
+  const GATE = { recorded: '2026-09-25', summary: 'clean' };
+  // a .loop/ with the demo epic instance, its rollup, and (optionally) item N's run live in it
+  const epicDir = ({ backlog = LAST(), live = null, rollup = '---\nepic: demo\nstatus: in-progress\n---\n' } = {}) => {
+    const dir = join(scratch(), '.loop');
+    mkdirSync(join(dir, 'epics', 'demo'), { recursive: true });
+    mkdirSync(join(dir, 'memory', 'epics'), { recursive: true });
+    writeFileSync(join(dir, 'memory', 'epics', 'demo.md'), rollup);
+    if (backlog !== null) writeFileSync(join(dir, 'epics', 'demo', 'backlog.md'), backlog);
+    if (live) runAt(dir, live);
+    return dir;
+  };
+  // item's run at `at` (a .loop/ root or an archive/<id> dir)
+  const runAt = (at, { item, status = 'done', gate = false, id = `run-demo-${item}` }) => {
+    mkdirSync(join(at, 'iterations'), { recursive: true });
+    writeFileSync(join(at, 'goal.md'), `Epic: demo — backlog item #${item}\n\n# Goal\n`);
+    writeFileSync(join(at, 'state.json'), JSON.stringify({ status, run_id: id, epic: 'demo', history: [], ...(gate ? { epic_gate: GATE } : {}) }));
+  };
+  const archived = (dir, run) => { const at = join(dir, 'archive', run.id ?? `run-demo-${run.item}`); mkdirSync(at, { recursive: true }); runAt(at, run); };
+  const filed = (dir) => existsSync(join(dir, 'archive', 'epics', 'demo')) && !existsSync(join(dir, 'epics', 'demo'));
+  const kept = (dir) => existsSync(join(dir, 'epics', 'demo', 'backlog.md')) && !existsSync(join(dir, 'archive', 'epics'));
+
+  for (const flags of [[], ['--force'], ['--allow-gaps']]) {
+    const dir = epicDir({ backlog: LAST('done (closed by loop-close)', 'pending'), live: { item: 3 } });
+    const r = archive('run', '--dir', dir, ...flags);
+    check(`last row: its done run without epic_gate is refused${flags.length ? ` (${flags[0]} does not waive it)` : ''}, nothing moved`,
+      r.code === 1 && existsSync(join(dir, 'state.json')) && !existsSync(join(dir, 'archive')) && r.err.includes("item 3 is epic demo's last row") && r.err.includes('--epic-gate'),
+      `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ backlog: LAST('done (closed by loop-close)', 'pending'), live: { item: 3, gate: true } });
+    const r = archive('run', '--dir', dir);
+    check('last row: with epic_gate its run archives as before', r.code === 0 && existsSync(join(dir, 'archive', 'run-demo-3', 'state.json')), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ live: { item: 3, gate: true } });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: the real end — the last row\'s run live in .loop/ with epic_gate → filed with no run archive', r.code === 0 && filed(dir), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ backlog: LAST('done (closed by loop-close)', 'pending'), live: { item: 3, gate: true } });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: a row not done (the integration row) refuses, nothing moved', r.code === 1 && kept(dir) && r.err.includes('rows not done (4)'), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir();
+    archived(dir, { item: 2, gate: true });
+    archived(dir, { item: 3 });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: only the point\'s run carries epic_gate — refused, nothing moved', r.code === 1 && kept(dir) && r.err.includes("carries the last close's epic_gate"), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir();
+    archived(dir, { item: 3, id: 'run-demo-3', status: 'stopped-max-iterations' });
+    archived(dir, { item: 3, id: 'run-demo-3b', gate: true });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: a stopped run and a done run with epic_gate of the last row → filed', r.code === 0 && filed(dir), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir();
+    archived(dir, { item: 3, id: 'run-demo-3', status: 'stopped-max-iterations', gate: true });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: the last row\'s only gated run is stopped, not done — refused, nothing moved', r.code === 1 && kept(dir) && r.err.includes("carries the last close's epic_gate"), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ live: { item: 3 } });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: no epic_gate anywhere — refused, nothing moved', r.code === 1 && kept(dir), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ backlog: LAST('pending', 'pending'), rollup: '---\nepic: demo\nstatus: abandoned\n---\n' });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: an abandoned epic is filed with a note, open rows and no gate notwithstanding', r.code === 0 && filed(dir) && r.out.includes('abandoned'), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ backlog: null });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: no backlog.md — filed with exactly one "no backlog" note', r.code === 0 && filed(dir) && r.out.split('\n').filter((l) => l.includes('has no backlog')).length === 1, `code=${r.code} out=${r.out} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ backlog: '# Backlog — Demo\n| # | Sub-goal | State |\n|---|---|---|\n| 1 | x | pending |\n' });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: a backlog.md with no `#`/Status table refuses, nothing moved (not the no-backlog exemption)', r.code === 1 && kept(dir) && r.err.includes('could not be read') && !r.out.includes('has no backlog'), `code=${r.code} out=${r.out} err=${r.err}`);
+  }
+  {
+    // the point (row 2) last in the run's order: its own gated run is the last close's
+    const dir = epicDir();
+    archived(dir, { item: 2, gate: true });
+    writeFileSync(join(dir, 'run.json'), JSON.stringify({ epic: 'demo', order: [1, 3, 2, 4] }));
+    const r = archive('epic', '--dir', dir, '--slug', 'demo', '--dry-run');
+    check("epic: the point last in run.json's order ([1, 3, 2, 4]) — its gated run counts", r.code === 0, `code=${r.code} err=${r.err}`);
+  }
+  {
+    // a gated done run of ANOTHER epic's row 3 does not stand for demo's
+    const dir = epicDir();
+    archived(dir, { item: 3 });
+    const other = join(dir, 'archive', 'run-other-3'); mkdirSync(join(other, 'iterations'), { recursive: true });
+    writeFileSync(join(other, 'goal.md'), 'Epic: other — backlog item #3\n\n# Goal\n');
+    writeFileSync(join(other, 'state.json'), JSON.stringify({ status: 'done', run_id: 'run-other-3', epic: 'other', history: [], epic_gate: GATE }));
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check("epic: another epic's gated run of the same row number does not count — refused", r.code === 1 && kept(dir) && r.err.includes("carries the last close's epic_gate"), `code=${r.code} err=${r.err}`);
+  }
+  {
+    // a stale run.json of another epic does not supply the order: the table's last (3) stands, the point (2) is not last
+    const dir = epicDir();
+    archived(dir, { item: 2, gate: true });
+    writeFileSync(join(dir, 'run.json'), JSON.stringify({ epic: 'other', order: [1, 3, 2, 4] }));
+    const r = archive('epic', '--dir', dir, '--slug', 'demo', '--dry-run');
+    check("epic: a run.json naming another epic is not read — the point's gated run does not count", r.code === 1 && r.err.includes("carries the last close's epic_gate"), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ live: { item: 3, gate: true } });
+    writeFileSync(join(dir, 'run.json'), '{');
+    const r = archive('epic', '--dir', dir, '--slug', 'demo', '--dry-run');
+    check('epic: a run.json that is not JSON refuses (which row is last would be a guess)', r.code === 1 && r.err.includes('is not JSON'), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir();
+    const at = join(dir, 'archive', 'run-demo-3'); mkdirSync(join(at, 'iterations'), { recursive: true });
+    writeFileSync(join(at, 'goal.md'), 'Epic: demo — backlog item #3\n\n# Goal\n');
+    writeFileSync(join(at, 'state.json'), JSON.stringify({ status: 'done', run_id: 'run-demo-3', epic: 'demo', history: [], epic_gate: 'yes' }));
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: an epic_gate that is not an object is no record — refused', r.code === 1 && kept(dir), `code=${r.code} err=${r.err}`);
+  }
+  {
+    const dir = epicDir({ live: { item: 3 }, rollup: '---\nepic: demo\nstatus: in-progress\n---\n\nNo row was abandoned.\n' });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: a rollup that only mentions "abandoned" in prose is not abandoned — refused', r.code === 1 && kept(dir) && !r.out.includes('abandoned (its rollup'), `code=${r.code} err=${r.err}`);
+  }
+  {
+    // an interrupted archive's staging directory is not a run: its gated copy does not count
+    const dir = epicDir();
+    archived(dir, { item: 3, id: '.staging-run-demo-3', gate: true });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: a gated run under a `.staging-` directory does not count — refused', r.code === 1 && kept(dir), `code=${r.code} err=${r.err}`);
+  }
+  {
+    // rows closed out of order: row 1 closed last and carries the gate, row 3 does not
+    const dir = epicDir();
+    archived(dir, { item: 1, gate: true });
+    archived(dir, { item: 3 });
+    const r = archive('epic', '--dir', dir, '--slug', 'demo');
+    check('epic: a gated done run of a non-point row that closed out of order counts', r.code === 0 && filed(dir), `code=${r.code} err=${r.err}`);
+  }
+  {
+    // run.json's order holds only the integration row (a resumed run) — the table decides, nothing is "item null"
+    const dir = epicDir({ live: { item: 3, gate: true } });
+    writeFileSync(join(dir, 'run.json'), JSON.stringify({ epic: 'demo', order: [4] }));
+    const r = archive('epic', '--dir', dir, '--slug', 'demo', '--dry-run');
+    check('epic: run.json order [4] (the integration row only) — the table decides, the gate counts', r.code === 0 && !r.err.includes('null'), `code=${r.code} err=${r.err}`);
+  }
+  {
+    // the point is the table's last row and run.json's order holds only the integration row: the table decides the point is last
+    const backlog = LAST().replace('| integration point | done |', '| — | done |').replace('| 3 | CSV output | x | y | 2 | — | small | — |', '| 3 | CSV output | x | y | 2 | — | small | integration point |');
+    const dir = epicDir({ backlog, live: { item: 3, gate: true } });
+    writeFileSync(join(dir, 'run.json'), JSON.stringify({ epic: 'demo', order: [4] }));
+    const r = archive('epic', '--dir', dir, '--slug', 'demo', '--dry-run');
+    check('epic: the point last in the table, run.json order [4] — the table decides, the point\'s gated run counts', r.code === 0, `code=${r.code} err=${r.err}`);
+  }
+}
+
 // ---------------------------------------------- run: the iterations/iterations bug
 {
   // The exact sequence that produced archive/<id>/iterations/iterations/ in the
