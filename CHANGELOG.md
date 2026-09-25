@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.18.3 — 2026-09-25
+
+**The last close is held by code, as the integration point already was.** The
+first real epic gate found it in its own epic: the integration point's gate was
+refused by `loop-archive.mjs` until recorded, while the gate at the epic's last
+close was only an instruction — and the last item's run was archived before the
+gate ran.
+
+- **`loop-close.mjs close`** names the epic gate on the row whose close leaves
+  every other non-integration row done (one line; on a row that is also the
+  integration point, this line alone).
+- **`loop-archive.mjs run`** refuses that row's finished run without
+  `epic_gate`, as it refuses the point's; no flag waives it.
+- **`loop-archive.mjs epic`** refuses while a backlog row is open, or while no
+  done run of a non-integration row carries the gate — the integration point's
+  own run counts only when the point is last in the run's order. An epic whose
+  rollup says `status: abandoned`, or one with no backlog, is filed with a note.
+- **`breakdown`'s backlog template** carries the `Epic criterion` column that
+  `loop-close.mjs` reads; an epic built from the template can close its first
+  item.
+- **Check 9 runs on every review fix**, a `Sites: none` criterion included, with
+  the payload's grep — what `loop-record.mjs` already required. The opt-out
+  waives the design-time sweep only (loop-engine skill, "Sites and Sweep").
+- `memory`'s Epic retro waits for the recorded gate and any integration row it
+  appended.
+
 ## 0.18.2 — 2026-09-25 (epic enforce-class-and-epic-integration)
 
 **Fix the class, not the instance — as a check the verifier runs.** A rule
@@ -49,8 +75,7 @@ earlier one's proven criterion and nothing re-ran it.
   nothing. Strict readers refuse an unclassified line at `<file>:<line>`.
   `/loop-engineering:loop` runs it at every epic item's stop (plan → one fresh
   verifier → `close`; a refusal is the next review-fix iteration), and
-  `breakdown`'s AC template gives each epic AC a `Done when:` to re-run, and
-  its backlog template the `Epic criterion` column the close reads.
+  `breakdown`'s AC template gives each epic AC a `Done when:` to re-run.
 - **`Kind: dated`** in `proven.md` — a criterion bound to a moment (an archived
   design, a spawn-time condition) is printed as context, not re-run. An AC also
   claimed by a later, not-done row is re-run only at the last claimer's close.
@@ -63,21 +88,14 @@ earlier one's proven criterion and nothing re-ran it.
   left, logic drifting apart, an invariant a later item broke. Confirmed
   findings become one numbered `integration — ` row (`loop-close.mjs append`)
   on the backlog and `run.json`'s order, run before the retro;
-  `loop-record.mjs --epic-gate` records it. The last close is held like the
-  integration point: on the row whose close leaves the others done, `close`
-  names the gate and `loop-archive.mjs run` refuses its run without it;
-  `loop-archive.mjs epic` refuses while a row is open or no done run of a
-  non-integration row carries the gate — the integration point's own run
-  counting only when the point is last in the run's order (an abandoned epic
-  is filed with a note).
+  `loop-record.mjs --epic-gate` records it.
 - **The integration point** — `epic-planner` may mark one row `integration
   point` in `Cond.`; the same gate runs when it closes, and
   `loop-archive.mjs run` refuses to file that run until `--epic-gate` is
   recorded. Its integration row runs next.
 - **The verifier converges** — a finding on a shape that occurs only in a
   constructed input is a `- flag:` line, not a REJECT (loop-verifier,
-  Convergence); check 9 runs on every review fix, `Sites: none` or not; a
-  reviewer finding may carry a `Repro:`, and one that does is
+  Convergence); a reviewer finding may carry a `Repro:`, and one that does is
   confirmed or dropped by running it (the rest still go to a refuter); a goal
   runs its full evidence battery once, not every iteration.
 - **Budget policy** (loop-engine skill) — `max_iterations` is raised once, by
