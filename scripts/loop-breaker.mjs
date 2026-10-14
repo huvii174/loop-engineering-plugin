@@ -35,7 +35,7 @@
  * see resolveThresholds() for why the distinction had to be made loud.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,10 +43,14 @@ import { fileURLToPath } from 'node:url';
  *  after an update ("restart to apply"), but this script always runs from disk.
  *  Printing it on every check makes version skew visible instead of silent. */
 export function pluginVersion() {
-  try {
-    const p = join(dirname(fileURLToPath(import.meta.url)), '..', '.claude-plugin', 'plugin.json');
-    return JSON.parse(readFileSync(p, 'utf8')).version ?? 'unknown';
-  } catch { return 'unknown'; }
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  for (const host of ['.claude-plugin', '.codex-plugin']) {
+    try {
+      const version = JSON.parse(readFileSync(join(root, host, 'plugin.json'), 'utf8')).version;
+      if (typeof version === 'string' && version) return version;
+    } catch { /* Try the other host's manifest in a standalone package. */ }
+  }
+  return 'unknown';
 }
 
 const DEFAULTS = { stagnation: 3, frustration: 3, noProgress: 5, plateau: 4, similarity: 0.85 };
@@ -680,4 +684,4 @@ function main(argv) {
   return verdict.stop ? 2 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main(process.argv));
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));

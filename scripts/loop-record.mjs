@@ -40,8 +40,9 @@
  * is cleared only after the accounting that replaces it is on disk.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const VERDICTS = ['pass', 'fail', 'escalate'];
 
@@ -451,4 +452,4 @@ function main(argv) {
 
 export { parseArgs, reconcileRecall, recallLogIds, VERDICTS, KINDS };
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main(process.argv));
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));

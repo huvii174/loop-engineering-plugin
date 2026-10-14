@@ -16,8 +16,15 @@ This repo *is* the plugin. Its `.loop/` is a live dogfood run, not fixtures.
 - **The shipped surface is auto-discovered** from `commands/`, `skills/`,
   `agents/`, and `hooks/hooks.json`. Adding a file ships it, so update the
   "What ships" table in `README.md` in the same change.
-- The version lives in `.claude-plugin/plugin.json` and is echoed from disk by
-  `scripts/loop-breaker.mjs`; bump it together with a `CHANGELOG.md` entry.
+- The version lives in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`
+  and is echoed from disk by `scripts/loop-breaker.mjs`; keep both in sync and
+  bump them together with a `CHANGELOG.md` entry.
+- **Codex entry points** in `codex/skills/` load the shared procedures through
+  `codex/runtime.md`. Read `.agents/writing-docs.md` before editing them too.
+  `.agents/plugins/marketplace.json` distributes the Codex manifest; its explicit
+  empty `commands`, `agents`, and `hooks` arrays prevent discovery of Claude's
+  surfaces outside the adapters. The ZIP builder
+  ships an allowlist; `scripts/test-codex.mjs` validates the extracted package.
 - **Before a release that changes `agents/loop-verifier.md` or
   `agents/plan-critic.md`** is announced, install it and re-spawn the installed
   agent on the fixture variants — `fixtures/sibling-sites/stage.sh half|full`; the three check-9

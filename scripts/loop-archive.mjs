@@ -29,8 +29,9 @@
  * write, and nothing else. It never empties an archive directory wholesale.
  */
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { integrationPoint, epicLinkOf, epicStanding } from './loop-close.mjs';
 
 /** What a finished run leaves behind at the top of `.loop/`. */
@@ -615,4 +616,4 @@ function main(argv) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main(process.argv));
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));

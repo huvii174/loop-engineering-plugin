@@ -1,0 +1,25 @@
+{
+  "name": "loop-engineering",
+  "version": "0.19.1",
+  "description": "Goal-based engineering loops with epic breakdown, design interviews, independent verification, deterministic circuit breakers, review gates, and compounding memory.",
+  "author": {
+    "name": "Hung Nguyen",
+    "email": "nghung174@gmail.com"
+  },
+  "repository": "https://github.com/huvii174/loop-engineering-plugin",
+  "license": "MIT",
+  "keywords": ["loop", "goal-based", "compound-engineering", "memory", "iteration"],
+  "skills": "./codex/skills/",
+  "commands": [],
+  "agents": [],
+  "hooks": [],
+  "interface": {
+    "displayName": "Loop Engineering",
+    "shortDescription": "Design, iterate, verify, and compound engineering memory",
+    "defaultPrompt": [
+      "Use $loop-engineering:loop-design to turn my goal into a verifiable design.",
+      "Use $loop-engineering:loop-breakdown to split my epic into ordered sub-goals.",
+      "Use $loop-engineering:loop-status to show the current loop's progress."
+    ]
+  }
+}

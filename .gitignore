@@ -6,6 +6,7 @@
 .DS_Store
 *.iml
 node_modules/
+dist/
 
 # loop run state (dogfooding this plugin on itself) — ignored whole, deliberately.
 # This store is a demo that is rebuilt on every dogfood run, so losing it costs

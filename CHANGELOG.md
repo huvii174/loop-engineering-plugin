@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.19.1 — 2026-10-14
+
+- Bump the Claude Code and Codex plugin manifests together to `0.19.1`.
+
+## 0.19.0 — 2026-10-14
+
+**Codex distribution alongside Claude Code.** A Codex manifest and repository
+marketplace expose six command equivalents, five shared-contract adapters, and
+three role procedures as skills. They load the existing workflows through one
+runtime adapter for paths, tools, fresh-context delegation, model routing, and
+`AGENTS.md` memory promotion.
+
+- Codex explicitly disables Claude lifecycle-hook discovery. Workflow checks
+  retain recall, boundaries, and terminal memory maintenance; deterministic
+  runtime scripts still enforce breaker, recording, close, and archive gates.
+  Mechanical edit/stop blocking and ambient session hooks remain Claude-only.
+- `package-codex.mjs` produces a standalone ZIP from runtime files only and
+  refuses manifest version drift. `test-codex.mjs` checks extracted references,
+  runtime execution, packaging exclusions, and rebuild behavior.
+- The breaker reads either host manifest so a standalone Codex package reports
+  its release version. Runtime entry-point checks resolve filesystem paths so
+  helpers execute under symlinked installations and paths containing spaces.
+  Installation, usage, and packaging are documented in
+  `docs/codex.md`; `AGENTS.md` supplies Codex repository authoring instructions.
+
 ## 0.18.3 — 2026-09-25
 
 **The last close is held by code, as the integration point already was.** The

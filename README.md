@@ -1,6 +1,6 @@
 # loop-engineering
 
-A Claude Code plugin implementing **goal-based engineering loops**: a
+A plugin for Claude Code and Codex implementing **goal-based engineering loops**: a
 confidence-gated design step that compiles your ask into an engineered brief,
 persistent plan→act→verify iteration toward a verifiable goal, evidence matched
 to the surface it lives on, **compounding memory** after every run, and mermaid
@@ -35,8 +35,31 @@ evidence-routing and memory-lifecycle rules are adapted from
 | script | `loop-close.mjs` | an epic item's close as code — `plan` lists what the close verifier re-runs (upstream `proven.md` criteria, the item's own, its claimed ACs; `Kind: dated` ones as context), `close` writes `done` only when the verifier's ```loop-close block marks every id met; `append` turns the epic gate's findings into one numbered integration row on the backlog and `run.json`'s order; tested on `fixtures/dogfood-epic/` (hash-pinned) by `test-loop-close.mjs` |
 | script | `memory-lint.mjs` | store health as code — `reach` (a body no trigger can reach), `budget`, `schema`; blocks the memory gate, runnable by hand during a pass |
 | script | `migrate-memory.mjs` | one-way migration of a flat memory store into the index/body tree; `--solutions` assigns the stable `S-NNN` handles that let a slug be renamed |
+| Codex skill | `loop-breakdown` · `loop-design` · `loop` · `loop-run` · `loop-status` · `loop-memory` | the six command equivalents, loading the shared workflows through `codex/runtime.md` |
+| Codex skill | `loop-interview` · `loop-engine` · `loop-memory-contract` · `loop-review` · `loop-prompt-craft` | adapters for the five shared contracts |
+| Codex skill | `loop-verifier` · `loop-plan-critic` · `loop-epic-planner` | role procedures for fresh-context Codex delegation |
+| script | `package-codex.mjs` | builds a standalone Codex ZIP from an explicit runtime allowlist |
 
 ## Install (import into any project)
+
+### Codex
+
+```bash
+codex plugin marketplace add huvii174/loop-engineering-plugin
+codex plugin add loop-engineering@loop-engineering-marketplace
+```
+
+For a local clone, replace the first command's repository with its absolute
+directory path. Restart Codex after installation, then invoke `$loop-engineering:loop-design`
+with your goal, `$loop-engineering:loop-breakdown` with your epic, or `$loop-engineering:loop-status` for progress.
+The six entry points and distribution steps are in [docs/codex.md](docs/codex.md).
+
+Codex requires Node.js 18+ and fresh-context subagents for verification and
+review. The Codex package uses workflow checks and deterministic scripts;
+Claude's lifecycle hooks are disabled, so ambient recall and mechanical
+edit/stop blocking are available only in the Claude installation.
+
+### Claude Code
 
 ```
 /plugin marketplace add huvii174/loop-engineering-plugin

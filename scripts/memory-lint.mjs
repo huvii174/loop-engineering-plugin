@@ -24,8 +24,9 @@
  * the thing the pass already did.
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, realpathSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const INDEX_BUDGET_BYTES = 40 * 1024;  // matches hooks/memory-gate.mjs
 const COMMENTARY_SHARE = 0.05;         // of the budget, before it is worth moving out
@@ -529,4 +530,4 @@ function main(argv) {
   return findings.some((f) => f.level === 'block') ? 2 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main(process.argv));
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) process.exit(main(process.argv));
