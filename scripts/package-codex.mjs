@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HELPERS = [
-  'loop-breaker', 'loop-record', 'loop-close', 'loop-archive', 'memory-lint', 'migrate-memory',
+  'loop-breaker', 'loop-critique', 'loop-record', 'loop-close', 'loop-archive', 'memory-lint', 'migrate-memory',
 ];
 
 export function runtimeFiles(root = ROOT) {

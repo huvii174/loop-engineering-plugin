@@ -10,15 +10,58 @@
  * Boundary syntax in goal.md (backticks optional):
  *   ## Global boundaries
  *   - Do not touch: `src/legacy/**`
+ *
+ * `.loop/critique/` is blocked in every loop status: the tenth man's verdicts
+ * are written by agent-track and loop-critique.mjs, so an edit there is the
+ * designer rewriting the review of its own design.
  */
 
-import { join, relative, isAbsolute } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { readStdinJson, hooksOff, loadState, readIfExists, globToRegex, mdSection } from './lib.mjs';
+import { CRITIQUE_DIR } from '../scripts/loop-critique.mjs';
+
+/** A path with symlinks resolved as far as it exists — the file itself may not yet. */
+function real(p) {
+  const rest = [];
+  let at = p;
+  while (!existsSync(at) && dirname(at) !== at) { rest.unshift(basename(at)); at = dirname(at); }
+  try { return join(realpathSync(at), ...rest); } catch { return p; }
+}
+
+/**
+ * The edit target relative to the project, or null when there is none or it
+ * lies outside. Resolved, not string-sliced: `./.loop/x`, `src/../.loop/x` and
+ * a symlinked tmp prefix all name the same file, and a check that reads them
+ * as different paths is a check with a side door.
+ */
+function projectPath(cwd, ti) {
+  const raw = ti.file_path || ti.notebook_path;
+  if (!raw) return null;
+  const target = relative(real(resolve(cwd)), real(resolve(cwd, String(raw).split('\\').join('/'))))
+    .split('\\').join('/');
+  if (!target || target.startsWith('..')) return null; // outside the project — not ours to police
+  return target;
+}
+
+/** Case-insensitive file systems (macOS, Windows) let `.LOOP/` name `.loop/`. */
+const foldCase = process.platform === 'darwin' || process.platform === 'win32';
 
 async function main() {
   if (hooksOff()) return 0;
   const input = await readStdinJson();
   const cwd = input.cwd || process.cwd();
+  const target = projectPath(cwd, input.tool_input || {});
+
+  const probe = target && foldCase ? target.toLowerCase() : target;
+  if (probe && probe.startsWith(`.loop/${CRITIQUE_DIR}/`)) {
+    process.stderr.write(
+      `boundary-gate: "${target}" is a tenth-man record — written by the agent-track hook or ` +
+      `scripts/loop-critique.mjs, never by hand. To answer a REVISE, revise the design and ` +
+      `spawn loop-engineering:plan-critic again; its next round is recorded beside this one.\n`
+    );
+    return 2;
+  }
 
   const state = loadState(cwd);
   if (!state || state.data.status !== 'running') return 0;
@@ -35,12 +78,7 @@ async function main() {
   }
   if (!globs.length) return 0;
 
-  const ti = input.tool_input || {};
-  let target = ti.file_path || ti.notebook_path;
   if (!target) return 0;
-  if (isAbsolute(target)) target = relative(cwd, target);
-  target = target.split('\\').join('/');
-  if (target.startsWith('..')) return 0; // outside the project — not ours to police
 
   for (const g of globs) {
     if (globToRegex(g).test(target)) {

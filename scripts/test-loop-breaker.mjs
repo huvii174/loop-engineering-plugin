@@ -405,6 +405,104 @@ const CASES = [
     warnings: [],
     state: { iteration: 0, max_iterations: 12, confidence_at_design: 95, history: [] },
   },
+  {
+    name: 'tenth man — a medium goal with no recorded verdict does not start',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [], latest: null, approved: false, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — a hook-captured APPROVE lets a large goal start, silently',
+    stop: false, warnings: [],
+    state: { run_id: 'r1', tier: 'large', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'APPROVE', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'APPROVE', source: 'hook' }, approved: true, revise_rounds: 1 } },
+  },
+  {
+    name: 'tenth man — a relayed APPROVE starts a Codex goal and says it was relayed',
+    stop: false, warnings: ['relayed'],
+    state: { run_id: 'r1', host: 'codex', tier: 'medium', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'relay' }], latest: { file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'relay' }, approved: true, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — a relayed APPROVE with host codex, but the breaker runs under Claude Code: no verdict',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', host: 'codex', tier: 'medium', iteration: 0, history: [] },
+    env: { claudeCode: true, critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'relay' }], latest: { file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'relay' }, approved: true, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — a relayed APPROVE on a host with hooks is no verdict',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'relay' }], latest: { file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'relay' }, approved: true, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — a stale APPROVE — the design changed after it — is no verdict',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'hook' }], latest: { file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'hook' }, approved: false, stale: true, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — the latest round is REVISE: resubmit before starting',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 1 } },
+  },
+  {
+    name: 'tenth man — one REVISE plus a ruling is not the spent bound: the ruling waits for round 2',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, tenth_man_ruling: 'D-012', history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 1 } },
+  },
+  {
+    name: 'tenth man — two REVISE rounds and a ruling that resolves on disk: the goal starts',
+    stop: false,
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, tenth_man_ruling: 'D-012', history: [] },
+    env: { ruling: true, critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 2 } },
+  },
+  {
+    name: 'tenth man — two REVISE rounds and a ruling ID with no decision behind it: no start',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, tenth_man_ruling: 'D-012', history: [] },
+    env: { ruling: false, critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 2 } },
+  },
+  {
+    name: 'tenth man — two REVISE rounds under hands-off, no ruling: the runner stops',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'small', iteration: 0, history: [] },
+    env: { handsOff: true, critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 2 } },
+  },
+  {
+    name: 'tenth man — a small goal may skip the critic when not hands-off',
+    stop: false,
+    state: { run_id: 'r1', tier: 'small', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [], latest: null, approved: false, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — hands-off owes the critic on every tier, trivial included',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'trivial', iteration: 0, history: [] },
+    env: { handsOff: true, critique: { run_id: 'r1', records: [], latest: null, approved: false, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — a missing tier rounds up to medium',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [], latest: null, approved: false, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — an unreadable latest record is no verdict',
+    stop: true, reason: 'tenth-man',
+    state: { run_id: 'r1', tier: 'medium', iteration: 0, history: [] },
+    env: { critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'APPROVE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'unreadable', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'unreadable', source: 'hook' }, approved: false, revise_rounds: 0 } },
+  },
+  {
+    name: 'tenth man — a run already past iteration 0 is not re-priced',
+    stop: false,
+    state: { run_id: 'r1', tier: 'medium', iteration: 2, history: [
+      { n: 1, approach: 'a', verdict: 'pass' }, { n: 2, approach: 'b', verdict: 'pass' },
+    ] },
+    env: { critique: { run_id: 'r1', records: [], latest: null, approved: false, revise_rounds: 0 } },
+  },
 ];
 
 const UNITS = [
@@ -441,7 +539,7 @@ for (const [label, fn] of UNITS) {
 for (const c of CASES) {
   let v;
   try {
-    v = analyze(c.state);
+    v = analyze(c.state, {}, c.env ?? {});
   } catch (e) {
     failed++;
     console.log(`FAIL  ${c.name} (threw ${e.message})`);

@@ -44,8 +44,11 @@ asking the user mid-flight. So before executing anything:
    pre-flight answers are the only interview material it will ever have.
 4. With `--hands-off`: skip the batch; every gap becomes an explicit numbered
    assumption in that item's `goal.md`, and the tenth-man critique becomes
-   **mandatory for every item regardless of tier** — autonomy is paid for with
-   stricter review, never looser (self-modifying-loop red line).
+   **mandatory for every item regardless of tier**, on a model other than the
+   designer's — autonomy is paid for with stricter review, never looser
+   (self-modifying-loop red line). Design Step 2.5 owns the procedure and the
+   breaker holds it; a critic that cannot be spawned, or a dispute past its
+   two-round bound, stops the runner (routing below).
 5. Present the execution plan (order, tiers, expected gates per item, any
    human-gated items) and get one final go/no-go. This is the last question
    until something stops.
@@ -80,6 +83,12 @@ For each item in topo order:
      what silences the gate. Present the stuck diagnosis (competing hypotheses
      + recommended probe) and wait for the user. Never skip a stuck item to
      continue the epic — later items may depend on the lie.
+   - Tenth man unavailable or disputed (design Step 2.5) → **the runner
+     stops**: the row reads `stuck — tenth man unavailable` or `stuck —
+     tenth-man dispute`. Present the reason, or both positions quoted from the
+     `.loop/critique/` records, and wait. The user's ruling goes to
+     `decisions/` and `state.json` `tenth_man_ruling`; then the row returns to
+     `designed` and the run resumes.
    - Item marked as a human gate in the backlog → stop BEFORE executing it and
      ask, even under `--hands-off`. (Listed in `run.json.human_gates`, so the
      gate stays silent there.)
@@ -112,7 +121,9 @@ For each item in topo order:
 `.loop/` holds ONE active goal; two items in one working tree would corrupt
 state. When the user asks for parallelism: identify items whose dependencies
 are met and that touch disjoint files (compare design work-breakdowns), create
-one git worktree per item (each gets its own `.loop/`), **write
+one git worktree per item (each gets its own `.loop/`; under `--hands-off`
+its `state.json` carries `"hands_off": true`, since `run.json` stays in the
+dispatching tree), **write
 `.loop/parallel.json` in the dispatching tree the moment you fan out** — the
 manifest format, and the slice-prefix agent-naming rules that travel with it,
 live in the `loop-engineering:loop-engine` skill; a fan-out without the manifest

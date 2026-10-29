@@ -6,7 +6,7 @@
  */
 
 import { spawnSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync, cpSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -883,6 +883,66 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
     `before=${JSON.stringify(before)} append=${a.status} ${a.stderr} next=${after && after.next.id}`);
   const r = runHook('run-gate.mjs', { cwd: d });
   check('run-gate: the appended integration row holds the session', r.code === 2 && r.err.includes('next is item 3'), r.err.slice(0, 160));
+}
+
+// -------------------------------------------- agent-track: tenth-man capture
+{
+  const verdict = '## Verdict: APPROVE\n\n### Dissent on record\nthe cache key\n';
+  const records = (d) => (existsSync(join(d, '.loop', 'critique')) ? readdirSync(join(d, '.loop', 'critique')) : []);
+  const stop = (d, extra) => runHook('agent-track.mjs', { cwd: d, hook_event_name: 'SubagentStop', session_id: 's1', agent_id: 'c1', ...extra });
+
+  const d = proj({ state: { status: 'designed', run_id: 'run-x', tier: 'medium', iteration: 0, history: [] } });
+  let t = stop(d, { agent_type: 'loop-engineering:plan-critic', last_assistant_message: verdict });
+  const file = join(d, '.loop', 'critique', 'r1.md');
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  check('agent-track: plan-critic SubagentStop records its last message verbatim, source hook',
+    t.code === 0 && /source: hook/.test(text) && /run_id: run-x/.test(text) && text.includes('the cache key'), `code=${t.code} files=${records(d)}`);
+
+  const transcriptPath = join(d, 'critic.jsonl');
+  writeFileSync(transcriptPath, [
+    JSON.stringify({ type: 'user', message: { content: 'go' } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '## Verdict: REVISE\n- **Finding 1:** z' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read' }] } }),
+  ].join('\n'));
+  t = stop(d, { agent_type: 'plan-critic', agent_transcript_path: transcriptPath });
+  const second = join(d, '.loop', 'critique', 'r2.md');
+  check('agent-track: without last_assistant_message the transcript’s last assistant text is recorded',
+    t.code === 0 && existsSync(second) && /verdict: REVISE/.test(readFileSync(second, 'utf8')), `files=${records(d)}`);
+
+  t = stop(d, { agent_type: 'loop-engineering:loop-verifier', last_assistant_message: verdict });
+  check('agent-track: a non-critic agent records no critique', t.code === 0 && records(d).length === 2, `files=${records(d)}`);
+
+
+  const slice = proj({ state: { status: 'designed', run_id: 'run-slice', tier: 'medium', iteration: 0, history: [] } });
+  t = stop(d, { agent_type: 'plan-critic', last_assistant_message: `Loop: ${join(slice, '.loop')}\n${verdict}` });
+  check('agent-track: a `Loop:` line naming a worktree slice records there, bound to its run_id',
+    t.code === 0 && records(slice).length === 1 && /run_id: run-slice/.test(readFileSync(join(slice, '.loop', 'critique', 'r1.md'), 'utf8')) && records(d).length === 2,
+    `slice=${records(slice)} main=${records(d)}`);
+  t = stop(d, { agent_type: 'plan-critic', last_assistant_message: `Loop: /nonexistent/.loop\n${verdict}` });
+  check('agent-track: a `Loop:` line naming no state.json falls back to this session’s .loop/', t.code === 0 && records(d).length === 3, `main=${records(d)}`);
+
+  const bare = proj({});
+  mkdirSync(join(bare, '.loop'), { recursive: true });
+  t = stop(bare, { agent_type: 'plan-critic', last_assistant_message: verdict });
+  check('agent-track: no state.json → nothing recorded, still exit 0', t.code === 0 && records(bare).length === 0, `code=${t.code}`);
+
+  // boundary-gate: the records are code-written in every loop status.
+  let r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: join(d, '.loop', 'critique', 'r1.md') } });
+  check('boundary-gate: an edit under .loop/critique/ is blocked while the loop is only designed', r.code === 2 && /tenth-man record/.test(r.err), `code=${r.code}`);
+  r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/critique/r9.md' } });
+  check('boundary-gate: a new file under .loop/critique/ is blocked too', r.code === 2, `code=${r.code}`);
+  for (const alias of ['./.loop/critique/r1.md', '.loop/./critique/r1.md', 'src/../.loop/critique/r1.md', join(realpathSync(d), '.loop/critique/r1.md')]) {
+    r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: alias } });
+    check(`boundary-gate: the alias ${alias.startsWith('/') ? '<realpath>/.loop/critique/r1.md' : alias} is blocked too`, r.code === 2, `code=${r.code}`);
+  }
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.LOOP/Critique/r1.md' } });
+    check('boundary-gate: a case-folded alias is blocked on a case-insensitive file system', r.code === 2, `code=${r.code}`);
+  }
+  r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/design.md' } });
+  check('boundary-gate: design.md beside it stays editable', r.code === 0, `code=${r.code}`);
+  r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/critique/r1.md' } }, { LOOP_HOOKS_OFF: '1' });
+  check('boundary-gate: LOOP_HOOKS_OFF=1 lets the critique edit through', r.code === 0, `code=${r.code}`);
 }
 
 // ------------------------------------------------------------ hooks.json wiring

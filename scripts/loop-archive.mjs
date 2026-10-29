@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { integrationPoint, epicLinkOf, epicStanding } from './loop-close.mjs';
 
 /** What a finished run leaves behind at the top of `.loop/`. */
-const RUN_ITEMS = ['goal.md', 'design.md', 'prompt.md', 'state.json', 'iterations'];
+const RUN_ITEMS = ['goal.md', 'design.md', 'prompt.md', 'state.json', 'iterations', 'critique'];
 
 /** Directories that are tool exhaust: never authored, never worth keeping. */
 const DROPPING_DIRS = ['.omc', '__pycache__'];

@@ -192,7 +192,7 @@ mtime predates the implementation.
 ```json
 {
   "status": "designed",
-  "run_id": "run-<ISO date>",
+  "run_id": "run-<ISO date>-<goal slug>",
   "tier": "trivial | small | medium | large",
   "iteration": 0,
   "max_iterations": 12,
@@ -212,6 +212,10 @@ travels with the numbered assumptions from `## Assumptions (signed off)`, copied
 into `assumptions`, and the breaker refuses to start a run that has neither. That
 pairing is the whole record of what was guessed in place of an answer, so keep
 the two in one edit.
+
+`run_id` must be unique across the goals of a day — the tenth man's records
+are bound to it. Write `"host": "codex"` only on Codex (the runtime adapter
+says when), and `"hands_off": true` in a worktree slice of a hands-off run.
 
 `breaker_thresholds` holds THRESHOLDS, never live counters — the breaker computes
 counters from `history` on every run. Leave the defaults unless deliberately
@@ -259,21 +263,50 @@ ammunition). Compose the payload as Template N under the
 `loop-engineering:prompt-craft` lint, and pass paths rather than pasted files —
 the critic must read the current artifacts, not your summary of them.
 `prompt.md` is what lets it check the design against the ask itself.
+List `prompt.md` first in the payload: the critic writes its blind pre-read
+from the ask before it opens your design. Name the absolute `.loop/` path in
+the payload too; the critic opens its output with it as `Loop:`.
+
+**The verdict is recorded by code.** On the critic's SubagentStop the
+`agent-track` hook writes its last message verbatim to `.loop/critique/r<N>.md`,
+bound to `run_id` and to the current goal and design. Read a round with
+`node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-critique.mjs status`. What the breaker
+then demands before iteration 1 is the **Tenth man pending** row in the
+loop-engine skill's stop table; an edit to `goal.md` or `design.md` after the
+APPROVE (other than quoting the dissent) voids it.
+
+**The designer never grades its own design.** The tenth man is a fresh context
+or it is absent. When the critic cannot be spawned — the Agent tool is missing
+or refused, or this gate is itself running inside a subagent — the gate stays
+pending: write `Tenth-man: pending (unavailable: <reason>)` into `design.md`,
+tell the user what would enable the spawn, and stop. Under the runner the row
+becomes `stuck — tenth man unavailable`.
+
+**Critic model.** Under `--hands-off`, spawn it with `model:` set to a model
+other than the one running this gate — the strongest available that differs —
+so the critic's blind spots are not the designer's. Write which model into
+`confidence_note`. Interactive runs may do the same; the default is `inherit`.
 
 - **REVISE** → apply the findings (or rebut them with evidence), update the
-  artifacts, resubmit. **Maximum 2 rounds**; unresolved disagreement after that
-  goes to the user verbatim — both positions — and their ruling is recorded in
-  `decisions/`.
-- **APPROVE** → copy its "Dissent on record" line into `design.md` under
-  `## Tenth-man dissent` — the user should see what the critic still worries
-  about, and the loop should know which assumption to watch.
+  artifacts, resubmit to a fresh critic; its round is recorded beside the last.
+  **Maximum 2 rounds**; unresolved disagreement after that goes to the user
+  verbatim — both positions, quoted from the two records — and their ruling is
+  recorded as a `decisions/` entry, its ID in `state.json` `"tenth_man_ruling"`;
+  both are filled only from the user's words — the breaker checks that the
+  entry exists and postdates the dispute, not who wrote it. Under `--hands-off` no one is
+  there to rule: the item stops as `stuck — tenth-man dispute`.
+- **APPROVE** → quote its "Dissent on record" line from the record into
+  `design.md` under `## Tenth-man dissent`, with the record's path — the user
+  should see what the critic still worries about, and the loop should know which
+  assumption to watch.
 
 **Skip condition** (keep trivial goals cheap): skip the critique when the goal's
 **tier** is `trivial`, or when tier is `small` AND the design has ≤ 3 work items
 AND every `Done when:` is already deterministic AND no work item touches an area
 with a `[dead]` entry or `solutions/` file in memory. When skipped, write
 `Tenth-man: skipped (tier)` into `design.md` so the omission is visible, not
-silent. `medium` and `large` always face the critic.
+silent. `medium` and `large` always face the critic, and `--hands-off` never
+skips.
 
 ## Step 3 — Handoff
 

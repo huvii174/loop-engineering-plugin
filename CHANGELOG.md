@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.0 — 2026-10-29
+
+**The tenth man is held by code, and the designer can no longer stand in for
+it.** A hands-off run whose critic could not be spawned had no rule to follow:
+the Claude-side design gate said "mandatory" and nothing else, so the cheapest
+way through was the designer critiquing and approving its own design. Codex's
+adapter already forbade that; the shared procedure and the breaker did not.
+
+- **`loop-critique.mjs`** records each tenth-man round as
+  `.loop/critique/r<N>.md`, verbatim, bound to `run_id` and to a hash of
+  `goal.md` + `design.md`. On Claude Code the `agent-track` hook writes it on a
+  plan-critic's SubagentStop from the agent's own last message
+  (`source: hook`), into the worktree slice its `Loop:` line names. On Codex,
+  `record` relays piped output (`source: relay`); inside Claude Code it refuses.
+  `loop-archive.mjs run` archives `critique/` with the run.
+- **The breaker refuses iteration 1** (exit 1, `tenth-man`) of a `medium`/`large`
+  goal — a missing tier rounds up — and of every goal under hands-off
+  (`run.json`, or a slice's `hands_off`), until the latest record is a
+  hook-captured APPROVE of the current design; a relayed one counts only with
+  `host: "codex"`. Two REVISE rounds pass only when `tenth_man_ruling` names a
+  `decisions/` heading written after the last REVISE. Runs past iteration 0
+  are not re-priced. `run_id` gains a goal slug so same-day goals stay apart.
+- **`boundary-gate`** blocks Edit/Write under `.loop/critique/` in every loop
+  status, on the resolved path (`./`, `..`, symlinked prefixes, and case folding
+  on macOS/Windows).
+- **Accepted limits**, all deliberate and visible on disk: a record written by
+  shell redirect (a tool hook cannot see `cat >`); a breaker run with
+  `CLAUDECODE` unset beside a hand-set `host: "codex"`; and a `decisions/` entry
+  the designer writes for its own `tenth_man_ruling`. Code cannot tell the
+  user's words from the session's; each of these leaves a file a reviewer sees.
+- **Design Step 2.5**: the designer never grades its own design — an
+  unspawnable critic leaves the gate pending (`Tenth-man: pending
+  (unavailable: …)`); under `--hands-off` the critic runs on a model other than
+  the designer's. **`run`** stops on `stuck — tenth man unavailable` and
+  `stuck — tenth-man dispute`, the second because hands-off has no user to rule.
+- **`plan-critic`** writes a blind pre-read from `prompt.md` before opening the
+  design, reported as its own section of the output contract.
+
 ## 0.19.1 — 2026-10-14
 
 - Bump the Claude Code and Codex plugin manifests together to `0.19.1`.

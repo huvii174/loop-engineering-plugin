@@ -30,14 +30,19 @@
  *   loop gets one warning it can act on before the breaker takes the decision
  *   away from it.
  *
+ * It also re-reads two gates rather than trusting them: the design gate's
+ * confidence (designGate) and, before iteration 1, the tenth man's recorded
+ * verdict (tenthManGate). Either one refusing is exit 1 — a record to fix.
+ *
  * Thresholds live in `breaker_thresholds`; the older `breaker` spelling is still
  * read when that field is absent. Nothing in state.json ever holds a counter —
  * see resolveThresholds() for why the distinction had to be made loud.
  */
 
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { critiqueStanding } from './loop-critique.mjs';
 
 /** Plugin version read from disk — the session's cached skill text can be stale
  *  after an update ("restart to apply"), but this script always runs from disk.
@@ -359,7 +364,15 @@ function quoted(value) {
   return value ? `: "${value}"` : ' (nothing recorded)';
 }
 
-export function analyze(state, overrides = {}) {
+/**
+ * `env` carries what lives beside state.json rather than in it: `critique` (the
+ * tenth man's standing, from loop-critique.mjs), `handsOff` (run.json, or the
+ * state's own `hands_off` in a worktree slice) and `ruling` (whether
+ * `tenth_man_ruling` resolves to a decision written after the last REVISE).
+ * main() always passes them; a caller that passes no `critique` skips the
+ * tenth-man gate, which keeps analyze() a pure function of what it is handed.
+ */
+export function analyze(state, overrides = {}, env = {}) {
   const { thresholds: t, warnings } = resolveThresholds(state, overrides);
   const counted = countable(state);
   const entries = markTransparency(counted.entries);
@@ -458,6 +471,15 @@ export function analyze(state, overrides = {}) {
     };
   }
 
+  const tenth = tenthManGate(state, env);
+  if (tenth.warning) warnings.push(tenth.warning);
+  if (tenth.stop) {
+    return {
+      stop: true, status: 'stuck', reason: 'tenth-man', error: true,
+      counters, warnings, detail: tenth.detail,
+    };
+  }
+
   // Most actionable first.
   if (maxIterations > 0 && iteration >= maxIterations) {
     return {
@@ -526,6 +548,124 @@ function designGate(state) {
       `no assumptions. Either run another interview round, or record the numbered assumptions that ` +
       `stand in for the answers — in "assumptions": ["…"] — so what was guessed is on the record.`,
   };
+}
+
+/** Tiers that always face the critic; a missing tier rounds up into them. */
+const CRITIQUED_TIERS = new Set(['medium', 'large']);
+
+/**
+ * The tenth man, re-read from disk before iteration 1 rather than trusted.
+ *
+ * A medium or large goal, and every goal under --hands-off, starts only with
+ * an APPROVE from plan-critic on record for this run_id, judging the design
+ * as it stands now (not `stale`) — or, once the two-round bound is spent,
+ * `tenth_man_ruling` naming a decision on disk written after the last REVISE.
+ * The record is written by the agent-track hook from the critic's own last
+ * message; a relayed one counts only where no hook exists (`host: "codex"`).
+ * A critique the designer wrote of its own design is the substitution this
+ * gate exists to refuse.
+ *
+ * Only iteration 0 is checked. A run already past it started under the rules
+ * of its day, and a rule change never re-prices work already under way.
+ */
+function tenthManGate(state, env) {
+  const c = env.critique;
+  if (!c || Number(state.iteration ?? 0) !== 0) return {};
+  const tier = state.tier ?? 'medium';
+  const handsOff = env.handsOff === true;
+  if (!CRITIQUED_TIERS.has(tier) && !handsOff) return {};
+
+  const why = handsOff ? 'hands-off' : `tier ${tier}`;
+  // `host` is written by the designer, so it is checked against the one fact the
+  // designer does not write: a breaker running under Claude Code (CLAUDECODE=1)
+  // is on the host where the hook is the route, whatever state.json says.
+  const relayAllowed = state.host === 'codex' && env.claudeCode !== true;
+  if (c.approved && (c.latest.source === 'hook' || relayAllowed)) {
+    return c.latest.source === 'hook' ? {} : {
+      warning:
+        `the tenth man's APPROVE (${c.latest.file}) was relayed by the session, not captured by ` +
+        `a hook — the verdict on record passed through the designer's hands.`,
+    };
+  }
+  if (env.ruling === true && c.revise_rounds >= 2) return {};
+
+  const how =
+    'Spawn loop-engineering:plan-critic in a fresh context; the agent-track hook records its verdict ' +
+    'under .loop/critique/. A critique the designer writes of its own design is not one — if the ' +
+    'critic cannot be spawned, the gate stays pending (design Step 2.5).';
+  if (!c.latest) {
+    return { stop: true, detail: `${why}: no tenth-man verdict is recorded for run ${c.run_id}. ${how}` };
+  }
+  if (c.approved) {
+    return {
+      stop: true,
+      detail:
+        `${why}: the APPROVE in ${c.latest.file} was relayed, and relay counts only on a host without ` +
+        `hooks (state.json "host": "codex", and not under Claude Code). ${how}`,
+    };
+  }
+  if (c.latest.verdict === 'APPROVE' && c.stale) {
+    return {
+      stop: true,
+      detail:
+        `${why}: the APPROVE in ${c.latest.file} judged another goal.md/design.md — they changed after it ` +
+        `(design_hash). Resubmit the current design. ${how}`,
+    };
+  }
+  if (c.latest.verdict === 'REVISE' && c.revise_rounds >= 2) {
+    return {
+      stop: true,
+      detail:
+        `${why}: the tenth man answered REVISE in ${c.revise_rounds} rounds. The disagreement goes to ` +
+        `the user verbatim; record their ruling under .loop/memory/decisions/ (a heading carrying its ID, ` +
+        `written after the last REVISE) and the ID in state.json "tenth_man_ruling".` +
+        `${handsOff ? ' Under --hands-off no one is there to rule: the runner stops.' : ''}`,
+    };
+  }
+  return {
+    stop: true,
+    detail:
+      `${why}: the latest tenth-man verdict (${c.latest.file}) is ${c.latest.verdict}, not APPROVE. ` +
+      `Apply or rebut its findings in the design, then resubmit. ${how}`,
+  };
+}
+
+/** Is this goal hands-off — the open epic run beside it, or a worktree slice's own state? */
+function handsOffFor(loopDir, state) {
+  if (state.hands_off === true) return true;
+  try {
+    const run = JSON.parse(readFileSync(join(loopDir, 'run.json'), 'utf8'));
+    if (run?.hands_off !== true) return false;
+    return !run.epic || !state.epic || run.epic === state.epic;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Does `tenth_man_ruling` name a decision on disk, written after the last
+ * REVISE record? An ID with no heading behind it is a string anyone could type;
+ * one older than the dispute cannot be its ruling.
+ */
+function rulingResolves(loopDir, state, critique) {
+  const id = typeof state.tenth_man_ruling === 'string' ? state.tenth_man_ruling.trim() : '';
+  if (!id || !/^[A-Za-z0-9][\w.-]*$/.test(id)) return false;
+  const revisedAt = Math.max(0, ...critique.records.filter((r) => r.verdict === 'REVISE').map((r) => Date.parse(r.recorded) || 0));
+  const heading = new RegExp(`^#{2,4}\\s+${id.replace(/[.]/g, '\\.')}\\b`, 'm');
+  const walk = (dir) => {
+    let names;
+    try { names = readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    for (const e of names) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { if (walk(p)) return true; continue; }
+      if (!e.name.endsWith('.md')) continue;
+      try {
+        if (statSync(p).mtimeMs > revisedAt && heading.test(readFileSync(p, 'utf8'))) return true;
+      } catch { /* unreadable — not a ruling */ }
+    }
+    return false;
+  };
+  return walk(join(loopDir, 'memory', 'decisions'));
 }
 
 /** Does the plateau window contain a passing verdict? (A flat run of pure failures is no-progress, not plateau.) */
@@ -658,7 +798,14 @@ function main(argv) {
     return 0;
   }
 
-  const verdict = analyze(state);
+  const loopDir = dirname(resolve(statePath));
+  const critique = critiqueStanding(loopDir, state);
+  const verdict = analyze(state, {}, {
+    critique,
+    handsOff: handsOffFor(loopDir, state),
+    ruling: rulingResolves(loopDir, state, critique),
+    claudeCode: process.env.CLAUDECODE === '1',
+  });
   warn(verdict.warnings);
   if (args.includes('--json')) {
     process.stdout.write(JSON.stringify(verdict, null, 2) + '\n');

@@ -162,7 +162,7 @@ try {
     assert.equal(pluginVersion(), manifest.version);
   });
   check('extracted breaker enforces both continue and budget-stop outcomes', () => {
-    writeFileSync(statePath, JSON.stringify({ iteration: 0, max_iterations: 3, history: [] }));
+    writeFileSync(statePath, JSON.stringify({ tier: 'small', iteration: 0, max_iterations: 3, history: [] }));
     let result = run(process.execPath, [breaker, '--json'], { cwd: project });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).stop, false);
@@ -170,6 +170,23 @@ try {
     result = run(process.execPath, [breaker, '--json'], { cwd: project });
     assert.equal(result.status, 2, result.stderr);
     assert.equal(JSON.parse(result.stdout).stop, true);
+  });
+  check('extracted breaker holds a medium goal at the tenth man until a relayed APPROVE is recorded', () => {
+    writeFileSync(statePath, JSON.stringify({ run_id: 'run-codex', host: 'codex', tier: 'medium', iteration: 0, max_iterations: 3, history: [] }));
+    // A Codex host does not set CLAUDECODE; this suite may itself run under Claude Code.
+    const codexHost = { ...process.env, CLAUDECODE: '' };
+    let result = run(process.execPath, [breaker, '--json'], { cwd: project, env: codexHost });
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(JSON.parse(result.stdout).reason, 'tenth-man');
+    result = run(process.execPath, [join(plugin, 'scripts/loop-critique.mjs'), 'record'], {
+      cwd: project, input: '## Verdict: APPROVE\n\n### Dissent on record\nnone survived\n', env: codexHost,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    result = run(process.execPath, [breaker, '--json'], { cwd: project, env: codexHost });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /relayed/);
+    result = run(process.execPath, [breaker, '--json'], { cwd: project, env: { ...process.env, CLAUDECODE: '1' } });
+    assert.equal(result.status, 1, 'a relayed APPROVE must not count under Claude Code');
   });
   check('all other extracted helpers execute without undeclared dependencies', () => {
     for (const [name, args] of [

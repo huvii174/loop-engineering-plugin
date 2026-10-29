@@ -1,6 +1,6 @@
 {
   "name": "loop-engineering",
-  "version": "0.19.1",
+  "version": "1.0.0",
   "description": "Goal-based engineering loops with epic breakdown, design interviews, independent verification, deterministic circuit breakers, review gates, and compounding memory.",
   "author": {
     "name": "Hung Nguyen",

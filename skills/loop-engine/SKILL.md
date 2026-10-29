@@ -25,6 +25,8 @@ yet" — but only inside explicit, bounded stop conditions.
   iterations/
     0001.md          # one record per iteration (append-only)
     0002.md
+  critique/
+    r1.md            # one tenth-man round each — written by agent-track / loop-critique.mjs, never by hand
   archive/
     <run_id>/        # finished goal runs (archived by the design gate)
     epics/<slug>/    # closed epic instances (archived when the retro is written)
@@ -152,6 +154,9 @@ prevents.
   "confidence_at_design": 96,
   "assumptions": [],
   "confidence_note": "post plan-critic, 7 findings applied",
+  "tenth_man_ruling": null,
+  "host": "codex",
+  "hands_off": true,
   "created": "2026-07-29",
   "updated": "2026-07-29",
   "breaker_thresholds": { "stagnation": 3, "frustration": 3, "noProgress": 5, "plateau": 4, "similarity": 0.85 },
@@ -181,6 +186,13 @@ two leaves the IDs to be answered again rather than lost.
 dimensions). Under 95 it must be paired with `assumptions` — the numbered
 assumptions standing in for the answers the interview never got — or the breaker
 refuses to start the run. Prose belongs in `confidence_note`.
+
+`tenth_man_ruling` is the `decisions/` ID of the user's ruling on a tenth-man
+dispute that outlived the two-round bound (design Step 2.5) — the only way past
+two REVISE records, and filled only from the user's words. Absent otherwise.
+`host` is present only on Codex, where no hook exists and a relayed critique
+record is the only kind; `hands_off` only in a worktree slice of a hands-off
+run, which has no `run.json` of its own.
 
 `record_contract_since` is the iteration from which the recorder owned this file.
 The breaker coerces older free-text verdicts with a warning naming each, and
@@ -388,6 +400,7 @@ a goal that is already met.
 | **No progress** | ⚙ script | 5 consecutive fails with no pass in between | `stuck` |
 | **Plateau** | ⚙ script | `criteria_passed` flat for 4 `kind: criterion` iterations despite passing verdicts | `stuck` |
 | **Unreadable record** | ⚙ script | a verdict outside the enum at or after `record_contract_since`, or a sub-95 design gate with no assumptions | exit `1` — fix the record |
+| **Tenth man pending** | ⚙ script | iteration 0 of a `medium`/`large` goal (no tier rounds up), or of any goal under a hands-off `run.json` or `hands_off` state, whose latest `.loop/critique/` record for `run_id` is not an APPROVE of the current goal.md + design.md (`design_hash`) captured by the hook — `source: relay` counts only with `host: "codex"`. Two REVISE rounds pass only when `tenth_man_ruling` names a `decisions/` heading written after the last REVISE | exit `1` — get the critique |
 | **Advisory** | ⚙ script | any counter one short of its threshold | none — prints `ADVISORY`, exit stays `0` |
 | Verifier escalation | model | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
 | User cancel | model | user says stop | `stopped-user` |
@@ -459,6 +472,9 @@ self-assessed at the design gate for standalone goals — when in doubt, round u
 | `small` | single-file feature/fix | full | skip if its conditions hold | correctness + spec fidelity (+security if triggered) |
 | `medium` | multi-file feature | full | full | all triggered dimensions |
 | `large` | architectural / cross-cutting | full | full | all triggered dimensions + simplification always |
+
+Under a hands-off `run.json` every tier faces the tenth man; the breaker reads
+both rules (Tenth man pending, below).
 
 One line of process discipline: a config tweak must not pay the cost of a schema
 migration — and a schema migration must never sneak through on a config tweak's

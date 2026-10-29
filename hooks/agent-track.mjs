@@ -14,11 +14,41 @@
  * payload without `session_id` or `agent_id`, or with a segment that is not a
  * plain id, records nothing. Always exits 0 — it must never stand between the
  * session and its agents. Deterministic; fail-open; LOOP_HOOKS_OFF=1 bypass.
+ *
+ * On SubagentStop of a plan-critic it also records the critic's verdict through
+ * loop-critique.mjs, from the agent's own last message — the one place the
+ * tenth man's words reach disk without passing through the session whose design
+ * they judge. A critic judging a worktree slice opens its output with
+ * `Loop: <abs path>/.loop`; the record goes there when that directory holds a
+ * state.json, and to this session's `.loop/` otherwise.
  */
 
-import { mkdirSync, writeFileSync, unlinkSync, rmdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, writeFileSync, unlinkSync, rmdirSync, existsSync, readFileSync } from 'node:fs';
+import { basename, isAbsolute, join } from 'node:path';
 import { readStdinJson, hooksOff, isPlainId } from './lib.mjs';
+import { recordCritique, loopDirOf } from '../scripts/loop-critique.mjs';
+
+/** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
+function isPlanCritic(type) {
+  return typeof type === 'string' && /(^|:)plan-critic$/.test(type);
+}
+
+/** The last assistant text in a subagent transcript (JSONL), for a payload without `last_assistant_message`. */
+export function lastAssistantText(path) {
+  let raw;
+  try { raw = readFileSync(path, 'utf8'); } catch { return ''; }
+  const lines = raw.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry;
+    try { entry = JSON.parse(lines[i]); } catch { continue; }
+    if (entry?.type !== 'assistant') continue;
+    const content = entry.message?.content;
+    const text = typeof content === 'string' ? content
+      : Array.isArray(content) ? content.filter((c) => c?.type === 'text').map((c) => c.text).join('\n') : '';
+    if (text.trim()) return text;
+  }
+  return '';
+}
 
 async function main() {
   if (hooksOff()) return;
@@ -35,6 +65,13 @@ async function main() {
   } else if (input.hook_event_name === 'SubagentStop') {
     try { unlinkSync(join(dir, agent)); } catch { /* already gone */ }
     try { rmdirSync(dir); } catch { /* not empty, or gone */ }
+    if (isPlanCritic(input.agent_type)) {
+      const text = input.last_assistant_message || lastAssistantText(input.agent_transcript_path);
+      const named = loopDirOf(text);
+      const target = named && isAbsolute(named) && basename(named) === '.loop' && existsSync(join(named, 'state.json'))
+        ? named : join(cwd, '.loop');
+      try { recordCritique(target, text, { source: 'hook', agentId: agent }); } catch { /* fail open */ }
+    }
   }
 }
 
