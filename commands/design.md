@@ -265,7 +265,10 @@ the critic must read the current artifacts, not your summary of them.
 `prompt.md` is what lets it check the design against the ask itself.
 List `prompt.md` first in the payload: the critic writes its blind pre-read
 from the ask before it opens your design. Name the absolute `.loop/` path in
-the payload too; the critic opens its output with it as `Loop:`.
+the payload too; the critic opens its output with it as `Loop:`. Spawn it as a
+plain subagent — `subagent_type`, `model`, `description`, `prompt` — since a
+`name` makes it a teammate under agent teams, whose report the hook never sees;
+`boundary-gate` refuses that spawn.
 
 **The verdict is recorded by code.** The `agent-track` hook writes the critic's
 report verbatim to `.loop/critique/r<N>.md` — the message it hands back through

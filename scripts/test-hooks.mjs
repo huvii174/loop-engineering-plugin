@@ -988,6 +988,27 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   check('boundary-gate: design.md beside it stays editable', r.code === 0, `code=${r.code}`);
   r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/critique/r1.md' } }, { LOOP_HOOKS_OFF: '1' });
   check('boundary-gate: LOOP_HOOKS_OFF=1 lets the critique edit through', r.code === 0, `code=${r.code}`);
+
+  // A plan-critic spawned with `name` runs as an agent-team teammate: the hooks
+  // see its name as agent_type and its report goes out by SendMessage, so no
+  // round is ever recorded. The spawn is refused while it can still be redone.
+  const spawn = (dir, ti, extra = {}) => runHook('boundary-gate.mjs', { cwd: dir, tool_name: 'Agent', tool_input: { description: 'x', prompt: 'p', ...ti }, ...extra });
+  r = spawn(d, { subagent_type: 'loop-engineering:plan-critic', model: 'fable', name: 'critic-item0-r2' });
+  check('boundary-gate: a plan-critic spawned with `name` is refused and told to drop it',
+    r.code === 2 && /plain subagent/.test(r.err) && /`name`/.test(r.err), `code=${r.code} err=${r.err.slice(0, 160)}`);
+  r = spawn(d, { subagent_type: 'loop-engineering:plan-critic', name: 'c' }, { tool_name: 'Task' });
+  check('boundary-gate: the Task spelling of the spawn tool is held the same way', r.code === 2, `code=${r.code}`);
+  const allowed = [
+    spawn(d, { subagent_type: 'loop-engineering:plan-critic', model: 'fable' }),
+    spawn(d, { subagent_type: 'loop-engineering:plan-critic', name: '  ' }),
+    spawn(d, { subagent_type: 'plan-critic', team_name: 'session-1' }),
+    spawn(d, { subagent_type: 'loop-engineering:loop-verifier', name: 'verifier-1' }),
+    spawn(d, { subagent_type: 'not-a-plan-critic-x', name: 'n' }),
+    spawn(proj({}), { subagent_type: 'loop-engineering:plan-critic', name: 'n' }),
+    runHook('boundary-gate.mjs', { cwd: d, tool_name: 'Agent', tool_input: { subagent_type: 'plan-critic', name: 'n' } }, { LOOP_HOOKS_OFF: '1' }),
+  ];
+  check('boundary-gate: a plain critic, a blank name, a team_name alone (deprecated, ignored), another agent type, a project without .loop/, or LOOP_HOOKS_OFF=1 → spawn allowed',
+    allowed.every((x) => x.code === 0), allowed.map((x) => x.code).join(','));
 }
 
 // ------------------------------------------------------------ hooks.json wiring
@@ -999,6 +1020,9 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   check('hooks.json: SubagentStart and SubagentStop run agent-track.mjs for every agent type',
     ['SubagentStart', 'SubagentStop'].every((e) => (cfg.hooks[e] ?? []).some((m) => m.matcher === '*' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command)))),
     JSON.stringify({ start: cfg.hooks.SubagentStart, stop: cfg.hooks.SubagentStop }).slice(0, 200));
+  check('hooks.json: PreToolUse runs boundary-gate.mjs on Agent and Task spawns',
+    (cfg.hooks.PreToolUse ?? []).some((m) => m.matcher.split('|').includes('Agent') && m.matcher.split('|').includes('Task') && m.hooks.some((h) => /hooks\/boundary-gate\.mjs"?$/.test(h.command))),
+    JSON.stringify(cfg.hooks.PreToolUse ?? null).slice(0, 200));
   check('hooks.json: Stop runs run-gate.mjs', (cfg.hooks.Stop ?? []).some((m) => m.hooks.some((h) => /hooks\/run-gate\.mjs"?$/.test(h.command))), '');
   check('hooks.json: PostToolUse runs agent-track.mjs on SubagentHandback',
     (cfg.hooks.PostToolUse ?? []).some((m) => m.matcher === 'SubagentHandback' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command))),

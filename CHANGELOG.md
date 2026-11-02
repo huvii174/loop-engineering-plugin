@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.1 — 2026-11-02
+
+**A tenth man spawned as a teammate is turned back before it runs.** With agent
+teams on (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), an `Agent` call that gives
+the plan-critic a `name` spawns an in-process teammate: the hooks see its name as
+`agent_type`, its report goes to the lead by `SendMessage`, and `agent-track`
+records nothing. A hands-off run that respawned its round-2 critic that way had
+an APPROVE no record held, and the breaker refused iteration 1.
+
+- **`boundary-gate`** also runs on `Agent`/`Task` and refuses (exit 2) a
+  `plan-critic` spawn carrying a non-blank `name` — teams on or off, since the
+  hook cannot see that setting reliably and the plain spawn costs one retry.
+- **`commands/design.md`** Step 2.5 spells out the plain spawn.
+- four new hook checks (154).
+
 ## 1.1.0 — 2026-11-02
 
 **The tenth man's verdict is captured when it is handed back.** In auto mode

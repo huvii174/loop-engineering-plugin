@@ -159,7 +159,7 @@ project has no `.loop/`, **fail open** on any error, and can be disabled with
 
 | Hook | Event | What it does |
 |---|---|---|
-| `boundary-gate` | PreToolUse (Edit/Write) | While a loop is `running`, blocks edits to paths under `Do not touch:` lines in goal.md's `## Global boundaries` — a Must-not upgraded from verifier-caught to mechanically impossible. In every status, blocks edits under `.loop/critique/`: the tenth man's records are written by code |
+| `boundary-gate` | PreToolUse (Edit/Write/MultiEdit/NotebookEdit · Agent/Task) | While a loop is `running`, blocks edits to paths under `Do not touch:` lines in goal.md's `## Global boundaries` — a Must-not upgraded from verifier-caught to mechanically impossible. In every status, blocks edits under `.loop/critique/`: the tenth man's records are written by code. Refuses a `plan-critic` spawn carrying `name`: with agent teams on it runs as a teammate, whose report never reaches `agent-track` |
 | `memory-gate` | Stop | Blocks ending the session (once) when the loop reached a terminal state but `.loop/memory/` wasn't touched afterwards, scratch was never distilled, recalled entries were never accounted for in a `Recall:` line, or an `_index.md` is over its reading budget. **Ad-hoc branch:** with no loop involved, if the session edited files while working through errors and captured nothing, nudges once for a one-liner in `scratch/adhoc.md` |
 | `run-gate` | Stop | While `.loop/run.json` names an epic run and its backlog still has an item not `done`, blocks ending the session and names the next item — the runner's continuity as code rather than prose. Silent on every legitimate stop and bounded by a nudge cap — both defined once, in the loop-engine skill's `run.json` section |
 | `agent-track` | SubagentStart / SubagentStop · PostToolUse on `SubagentHandback` | Keeps one empty file per running subagent under `.loop/.agents-running/<session>/`, so `run-gate` stays silent while the session waits on an agent it spawned (a file older than 30 minutes no longer counts). It also records a `plan-critic`'s report verbatim through `loop-critique.mjs` — the message it hands back through `SubagentHandback` (auto mode), else its last message at stop — so the verdict reaches disk without passing through the designer. Always exits 0; writes nothing without a plain `session_id` and `agent_id`; the silence is capped at 20 stops per position |
@@ -169,7 +169,7 @@ project has no `.loop/`, **fail open** on any error, and can be disabled with
 Deliberately NOT hooks: memory *distillation* (needs judgment — the ad-hoc nudge
 collects raw one-liners, but only `/loop-engineering:memory` turns scratch into
 durable entries) and self-evaluation (the breaker already runs as code inside the
-loop). Verify with `node scripts/test-hooks.mjs` (150 checks); the scripts have
+loop). Verify with `node scripts/test-hooks.mjs` (154 checks); the scripts have
 their own suites — `test-loop-archive.mjs` (97), `test-migrate-memory.mjs` (92),
 `test-loop-critique.mjs` (28).
 

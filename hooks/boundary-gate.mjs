@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * boundary-gate — PreToolUse hook on Edit/Write/MultiEdit/NotebookEdit.
+ * boundary-gate — PreToolUse hook on Edit/Write/MultiEdit/NotebookEdit and Agent/Task.
  *
  * While a loop is `running`, mechanically blocks edits to paths protected by a
  * `Do not touch:` line under `## Global boundaries` in .loop/goal.md. Upgrades
@@ -14,6 +14,13 @@
  * `.loop/critique/` is blocked in every loop status: the tenth man's verdicts
  * are written by agent-track and loop-critique.mjs, so an edit there is the
  * designer rewriting the review of its own design.
+ *
+ * On Agent/Task: with agent teams on, a plan-critic spawned with `name` runs as a
+ * teammate, whose type the hooks see as its name and whose report travels by
+ * SendMessage — agent-track records nothing, and the breaker refuses iteration 1
+ * of a design the critic approved. Such a spawn is refused before it starts,
+ * whether or not teams are on: the hook cannot see that setting reliably, and
+ * the plain spawn costs one retry.
  */
 
 import { existsSync, realpathSync } from 'node:fs';
@@ -47,10 +54,28 @@ function projectPath(cwd, ti) {
 /** Case-insensitive file systems (macOS, Windows) let `.LOOP/` name `.loop/`. */
 const foldCase = process.platform === 'darwin' || process.platform === 'win32';
 
+/** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
+const isPlanCritic = (type) => typeof type === 'string' && /(^|:)plan-critic$/.test(type);
+const isSet = (v) => typeof v === 'string' && v.trim() !== '';
+
 async function main() {
   if (hooksOff()) return 0;
   const input = await readStdinJson();
   const cwd = input.cwd || process.cwd();
+
+  if (input.tool_name === 'Agent' || input.tool_name === 'Task') {
+    const ti = input.tool_input || {};
+    if (!existsSync(join(cwd, '.loop')) || !isPlanCritic(ti.subagent_type)) return 0;
+    if (!isSet(ti.name)) return 0;
+    process.stderr.write(
+      `boundary-gate: spawn loop-engineering:plan-critic as a plain subagent — drop \`name\`. ` +
+      `With agent teams on, a named spawn runs as a teammate: its report never reaches the agent-track hook, so no ` +
+      `tenth-man round is recorded and the breaker refuses iteration 1. Keep subagent_type, ` +
+      `model, description and prompt; everything else in the call is unchanged.\n`
+    );
+    return 2;
+  }
+
   const target = projectPath(cwd, input.tool_input || {});
 
   const probe = target && foldCase ? target.toLowerCase() : target;
