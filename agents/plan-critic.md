@@ -97,6 +97,11 @@ it survived is worth more than one that never attacked.
 
 ## Output contract (exactly this shape)
 
+Deliver the whole report as one message in this shape — when a
+`SubagentHandback` tool is offered, its `message` is the report; the hook that
+records your verdict reads that message, or your final text where there is no
+hand-back.
+
 ```markdown
 Loop: <the absolute .loop/ path your brief names>
 ## Verdict: APPROVE | REVISE

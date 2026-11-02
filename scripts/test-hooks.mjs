@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Fixture tests for the three hooks. Run: node scripts/test-hooks.mjs
+ * Fixture tests for the hooks. Run: node scripts/test-hooks.mjs
  * Spawns each hook as a real subprocess with stdin JSON and a temp project dir,
  * asserting on exit codes and output. Exits 0 when all pass. No dependencies.
  */
@@ -912,14 +912,59 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   t = stop(d, { agent_type: 'loop-engineering:loop-verifier', last_assistant_message: verdict });
   check('agent-track: a non-critic agent records no critique', t.code === 0 && records(d).length === 2, `files=${records(d)}`);
 
+  // Auto mode: the report travels through the SubagentHandback tool, and the
+  // stop payload's last message is only the closing text (or nothing).
+  const handback = (dir, extra) => runHook('agent-track.mjs', { cwd: dir, hook_event_name: 'PostToolUse', session_id: 's1', agent_id: 'c2', tool_name: 'SubagentHandback', ...extra });
+  const bodyOf = (file) => readFileSync(file, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '');
+  const report = '## Verdict: REVISE\n\n### Attacks mounted\n1. the cache key — grep — FAILED\n\n- **Finding 1:** the hand-back\n';
+  const marker = join(d, '.loop', '.agents-running', 's1', 'c2.critique');
+  t = handback(d, { agent_type: 'loop-engineering:plan-critic', tool_input: { message: report } });
+  const third = join(d, '.loop', 'critique', 'r3.md');
+  check('agent-track: a plan-critic SubagentHandback records tool_input.message verbatim, source hook, agent_id, and leaves a marker',
+    t.code === 0 && existsSync(third) && bodyOf(third) === report && /^verdict: REVISE$/m.test(readFileSync(third, 'utf8'))
+      && /^source: hook$/m.test(readFileSync(third, 'utf8')) && /^agent_id: c2$/m.test(readFileSync(third, 'utf8'))
+      && existsSync(marker) && readFileSync(marker, 'utf8') === third,
+    `code=${t.code} files=${records(d)} marker=${existsSync(marker)}`);
+  t = stop(d, { agent_id: 'c2', agent_type: 'loop-engineering:plan-critic', last_assistant_message: 'Report delivered.' });
+  check('agent-track: the SubagentStop after a recorded hand-back records nothing more and clears the marker',
+    t.code === 0 && records(d).length === 3 && !existsSync(marker) && !existsSync(join(d, '.loop', '.agents-running', 's1')),
+    `code=${t.code} files=${records(d)} marker=${existsSync(marker)}`);
+  t = handback(d, { agent_type: 'loop-engineering:loop-verifier', tool_input: { message: report } });
+  const t4 = handback(d, { agent_type: 'plan-critic', tool_name: 'Bash', tool_input: { command: 'echo', message: report } });
+  const t5 = handback(d, { agent_type: 'plan-critic', tool_input: { message: '   ' } });
+  check('agent-track: a hand-back from a non-critic, another tool from a critic, or a blank message records nothing',
+    t.code === 0 && t4.code === 0 && t5.code === 0 && records(d).length === 3 && !existsSync(join(d, '.loop', '.agents-running', 's1')),
+    `files=${records(d)}`);
+
+  // No tool hook ran (marker absent): the transcript's hand-back is the report,
+  // and the closing text after it is not.
+  const hbTranscript = join(d, 'critic-handback.jsonl');
+  writeFileSync(hbTranscript, [
+    JSON.stringify({ type: 'user', message: { content: 'go' } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Reading the design.' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message: report } }] } }),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'delivered' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Report delivered.' }] } }),
+  ].join('\n'));
+  t = stop(d, { agent_id: 'c3', agent_type: 'plan-critic', agent_transcript_path: hbTranscript, last_assistant_message: 'Report delivered.' });
+  const fourth = join(d, '.loop', 'critique', 'r4.md');
+  check('agent-track: a SubagentStop whose transcript holds a hand-back records that message, not the closing text',
+    t.code === 0 && existsSync(fourth) && bodyOf(fourth) === report && /^agent_id: c3$/m.test(readFileSync(fourth, 'utf8')), `files=${records(d)}`);
+
+  // Without a hand-back the stop payload's final text wins over the transcript, which may lag it.
+  t = stop(d, { agent_id: 'c4', agent_type: 'plan-critic', agent_transcript_path: transcriptPath, last_assistant_message: verdict });
+  const fifth = join(d, '.loop', 'critique', 'r5.md');
+  check('agent-track: without a hand-back, last_assistant_message wins over the transcript’s last text',
+    t.code === 0 && existsSync(fifth) && bodyOf(fifth) === verdict, `files=${records(d)}`);
+
 
   const slice = proj({ state: { status: 'designed', run_id: 'run-slice', tier: 'medium', iteration: 0, history: [] } });
   t = stop(d, { agent_type: 'plan-critic', last_assistant_message: `Loop: ${join(slice, '.loop')}\n${verdict}` });
   check('agent-track: a `Loop:` line naming a worktree slice records there, bound to its run_id',
-    t.code === 0 && records(slice).length === 1 && /run_id: run-slice/.test(readFileSync(join(slice, '.loop', 'critique', 'r1.md'), 'utf8')) && records(d).length === 2,
+    t.code === 0 && records(slice).length === 1 && /run_id: run-slice/.test(readFileSync(join(slice, '.loop', 'critique', 'r1.md'), 'utf8')) && records(d).length === 5,
     `slice=${records(slice)} main=${records(d)}`);
   t = stop(d, { agent_type: 'plan-critic', last_assistant_message: `Loop: /nonexistent/.loop\n${verdict}` });
-  check('agent-track: a `Loop:` line naming no state.json falls back to this session’s .loop/', t.code === 0 && records(d).length === 3, `main=${records(d)}`);
+  check('agent-track: a `Loop:` line naming no state.json falls back to this session’s .loop/', t.code === 0 && records(d).length === 6, `main=${records(d)}`);
 
   const bare = proj({});
   mkdirSync(join(bare, '.loop'), { recursive: true });
@@ -955,6 +1000,9 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
     ['SubagentStart', 'SubagentStop'].every((e) => (cfg.hooks[e] ?? []).some((m) => m.matcher === '*' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command)))),
     JSON.stringify({ start: cfg.hooks.SubagentStart, stop: cfg.hooks.SubagentStop }).slice(0, 200));
   check('hooks.json: Stop runs run-gate.mjs', (cfg.hooks.Stop ?? []).some((m) => m.hooks.some((h) => /hooks\/run-gate\.mjs"?$/.test(h.command))), '');
+  check('hooks.json: PostToolUse runs agent-track.mjs on SubagentHandback',
+    (cfg.hooks.PostToolUse ?? []).some((m) => m.matcher === 'SubagentHandback' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command))),
+    JSON.stringify(cfg.hooks.PostToolUse ?? null).slice(0, 200));
 }
 
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });

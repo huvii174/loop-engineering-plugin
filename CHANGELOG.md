@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0 — 2026-11-02
+
+**The tenth man's verdict is captured when it is handed back.** In auto mode
+(Claude Code ≥ 2.1.271) a subagent delivers its report by calling the
+`SubagentHandback` tool, so a plan-critic's SubagentStop carried only its
+closing text — or nothing — and `agent-track` recorded no verdict, or an
+`unreadable` round: the breaker then refused iteration 1 of a design the critic
+had approved.
+
+- **`agent-track`** now also runs as a `PostToolUse` hook matched on
+  `SubagentHandback` and records `tool_input.message` of a plan-critic's
+  hand-back verbatim (`source: hook`, with `agent_id`), leaving an
+  `<agent_id>.critique` marker beside its running-file so the stop that follows
+  records nothing a second time. On SubagentStop the transcript's hand-back
+  message, when one is there, is the report; otherwise `last_assistant_message`
+  wins over the transcript's last text, which may lag it.
+- **`agents/plan-critic.md`** names the hand-back message as the report, in the
+  contract shape.
+
 ## 1.0.0 — 2026-10-29
 
 **The tenth man is held by code, and the designer can no longer stand in for

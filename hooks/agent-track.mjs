@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * agent-track — SubagentStart / SubagentStop hook.
+ * agent-track — SubagentStart / SubagentStop hook, plus PostToolUse on
+ * SubagentHandback.
  *
  * run-gate blocks a stop while an epic run is open, and a session that spawned
  * a background verifier or reviewer ends its turn to wait — which the gate read
@@ -15,12 +16,24 @@
  * plain id, records nothing. Always exits 0 — it must never stand between the
  * session and its agents. Deterministic; fail-open; LOOP_HOOKS_OFF=1 bypass.
  *
- * On SubagentStop of a plan-critic it also records the critic's verdict through
- * loop-critique.mjs, from the agent's own last message — the one place the
- * tenth man's words reach disk without passing through the session whose design
- * they judge. A critic judging a worktree slice opens its output with
- * `Loop: <abs path>/.loop`; the record goes there when that directory holds a
- * state.json, and to this session's `.loop/` otherwise.
+ * It also records each plan-critic's verdict through loop-critique.mjs — the one
+ * place the tenth man's words reach disk without passing through the session
+ * whose design they judge. The critic's report arrives by one of two routes:
+ *
+ *   - In auto mode (Claude Code ≥ 2.1.271) the critic delivers it by calling
+ *     the `SubagentHandback` tool; its `message` is the report, and the stop
+ *     payload's `last_assistant_message` is only the closing text, if any. The
+ *     PostToolUse hook on that tool records `tool_input.message` and leaves a
+ *     `<agent_id>.critique` marker beside the running-file, so the stop that
+ *     follows records nothing a second time.
+ *   - Otherwise the report is the critic's final text: `last_assistant_message`
+ *     on SubagentStop, or, when that is absent, the last assistant text of the
+ *     agent transcript. A `SubagentHandback` tool_use found in the transcript
+ *     with no marker (the tool hook did not run) is recorded as the report.
+ *
+ * A critic judging a worktree slice opens its report with `Loop: <abs path>/.loop`;
+ * the record goes there when that directory holds a state.json, and to this
+ * session's `.loop/` otherwise.
  */
 
 import { mkdirSync, writeFileSync, unlinkSync, rmdirSync, existsSync, readFileSync } from 'node:fs';
@@ -28,26 +41,50 @@ import { basename, isAbsolute, join } from 'node:path';
 import { readStdinJson, hooksOff, isPlainId } from './lib.mjs';
 import { recordCritique, loopDirOf } from '../scripts/loop-critique.mjs';
 
+/** The tool a subagent in auto mode delivers its report through. */
+const HANDBACK_TOOL = 'SubagentHandback';
+
 /** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
 function isPlanCritic(type) {
   return typeof type === 'string' && /(^|:)plan-critic$/.test(type);
 }
 
-/** The last assistant text in a subagent transcript (JSONL), for a payload without `last_assistant_message`. */
-export function lastAssistantText(path) {
+/**
+ * What a subagent transcript (JSONL) holds of the report: `handback`, the
+ * `message` of the last SubagentHandback tool_use when the agent handed its
+ * report back, and `closing`, the last assistant text. Either is '' when absent.
+ */
+export function transcriptReport(path) {
   let raw;
-  try { raw = readFileSync(path, 'utf8'); } catch { return ''; }
+  try { raw = readFileSync(path, 'utf8'); } catch { return { handback: '', closing: '' }; }
   const lines = raw.split('\n');
+  let closing = '';
   for (let i = lines.length - 1; i >= 0; i--) {
     let entry;
     try { entry = JSON.parse(lines[i]); } catch { continue; }
     if (entry?.type !== 'assistant') continue;
     const content = entry.message?.content;
-    const text = typeof content === 'string' ? content
-      : Array.isArray(content) ? content.filter((c) => c?.type === 'text').map((c) => c.text).join('\n') : '';
-    if (text.trim()) return text;
+    if (!Array.isArray(content)) {
+      if (!closing && typeof content === 'string' && content.trim()) closing = content;
+      continue;
+    }
+    const handback = content.find((c) => c?.type === 'tool_use' && c.name === HANDBACK_TOOL);
+    const message = typeof handback?.input?.message === 'string' ? handback.input.message : '';
+    if (message.trim()) return { handback: message, closing };
+    if (!closing) {
+      const text = content.filter((c) => c?.type === 'text').map((c) => c.text).join('\n');
+      if (text.trim()) closing = text;
+    }
   }
-  return '';
+  return { handback: '', closing };
+}
+
+/** Record `text` as the critic's round, in the `.loop/` its `Loop:` line names or this session's. */
+function recordVerdict(cwd, text, agent) {
+  const named = loopDirOf(text);
+  const target = named && isAbsolute(named) && basename(named) === '.loop' && existsSync(join(named, 'state.json'))
+    ? named : join(cwd, '.loop');
+  try { return recordCritique(target, text, { source: 'hook', agentId: agent }); } catch { return { error: 'threw' }; }
 }
 
 async function main() {
@@ -59,18 +96,29 @@ async function main() {
   const agent = input.agent_id;
   if (!isPlainId(session) || !isPlainId(agent)) return;
   const dir = join(cwd, '.loop', '.agents-running', session);
+  const marker = join(dir, `${agent}.critique`);
   if (input.hook_event_name === 'SubagentStart') {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, agent), '');
+  } else if (input.hook_event_name === 'PostToolUse') {
+    if (input.tool_name !== HANDBACK_TOOL || !isPlanCritic(input.agent_type)) return;
+    const message = input.tool_input?.message;
+    if (typeof message !== 'string' || !message.trim()) return;
+    const r = recordVerdict(cwd, message, agent);
+    if (r && !r.error) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(marker, r.file);
+    }
   } else if (input.hook_event_name === 'SubagentStop') {
     try { unlinkSync(join(dir, agent)); } catch { /* already gone */ }
+    const recorded = existsSync(marker);
+    try { unlinkSync(marker); } catch { /* none */ }
     try { rmdirSync(dir); } catch { /* not empty, or gone */ }
-    if (isPlanCritic(input.agent_type)) {
-      const text = input.last_assistant_message || lastAssistantText(input.agent_transcript_path);
-      const named = loopDirOf(text);
-      const target = named && isAbsolute(named) && basename(named) === '.loop' && existsSync(join(named, 'state.json'))
-        ? named : join(cwd, '.loop');
-      try { recordCritique(target, text, { source: 'hook', agentId: agent }); } catch { /* fail open */ }
+    if (isPlanCritic(input.agent_type) && !recorded) {
+      // A hand-back in the transcript is the report. Otherwise the stop payload's
+      // final text is authoritative — the transcript may lag it.
+      const report = transcriptReport(input.agent_transcript_path);
+      recordVerdict(cwd, report.handback || input.last_assistant_message || report.closing, agent);
     }
   }
 }

@@ -9,10 +9,12 @@
  * the designer can both fill in and grade is not a gate.
  *
  * So the verdict is captured where the designer is not: the agent-track hook
- * calls recordCritique() on SubagentStop of a plan-critic, with the agent's own
- * last message. Each round lands in `.loop/critique/r<N>.md`, bound to the run
- * by `run_id`, and the breaker refuses iteration 1 of a goal that owes the
- * critique without an APPROVE there (see tenthManGate in loop-breaker.mjs).
+ * calls recordCritique() with the plan-critic's own report — the message it
+ * hands back through the SubagentHandback tool (PostToolUse), or its last
+ * message on SubagentStop where no hand-back happened. Each round lands in
+ * `.loop/critique/r<N>.md`, bound to the run by `run_id`, and the breaker
+ * refuses iteration 1 of a goal that owes the critique without an APPROVE
+ * there (see tenthManGate in loop-breaker.mjs).
  *
  *   node loop-critique.mjs record [--dir .loop] [--agent-id <id>] < critic-output.md
  *   node loop-critique.mjs status [--dir .loop] [--json]
@@ -202,7 +204,7 @@ function main(argv) {
     if (process.env.CLAUDECODE === '1') {
       process.stderr.write(
         'loop-critique: refusing a relayed verdict inside Claude Code — there the agent-track hook records ' +
-        'the critic from its own last message. Spawn loop-engineering:plan-critic; if the hook is off ' +
+        'the critic from the report it hands back or its last message. Spawn loop-engineering:plan-critic; if the hook is off ' +
         '(LOOP_HOOKS_OFF), turn it on rather than relaying.\n'
       );
       return 1;

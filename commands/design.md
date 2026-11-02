@@ -267,9 +267,10 @@ List `prompt.md` first in the payload: the critic writes its blind pre-read
 from the ask before it opens your design. Name the absolute `.loop/` path in
 the payload too; the critic opens its output with it as `Loop:`.
 
-**The verdict is recorded by code.** On the critic's SubagentStop the
-`agent-track` hook writes its last message verbatim to `.loop/critique/r<N>.md`,
-bound to `run_id` and to the current goal and design. Read a round with
+**The verdict is recorded by code.** The `agent-track` hook writes the critic's
+report verbatim to `.loop/critique/r<N>.md` — the message it hands back through
+`SubagentHandback`, or its last message on SubagentStop — bound to `run_id` and
+to the current goal and design. Read a round with
 `node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-critique.mjs status`. What the breaker
 then demands before iteration 1 is the **Tenth man pending** row in the
 loop-engine skill's stop table; an edit to `goal.md` or `design.md` after the
