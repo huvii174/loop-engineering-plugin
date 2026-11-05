@@ -56,6 +56,11 @@ pattern is `.loop/*` + `!.loop/memory/` + `.loop/memory/scratch/`, never
 `.loop/`. `loop-reminder` says so at session start when it finds the store
 ignored.
 
+**Opting the store out of git** is the project's call: `.loop/config.json` →
+`{"memory":{"git":false}}`, or `LOOP_MEMORY_GIT=off` for one shell. It silences
+that warning and removes the archive behind Delete, so maintenance demotes
+instead — Delete only an entry that would mislead.
+
 ## Parallel slices — `.loop/parallel.json`
 
 One `.loop/` tracks one active goal, so parallel sub-goals run in separate git

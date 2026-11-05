@@ -27,6 +27,21 @@ export function hooksOff() {
   return process.env.LOOP_HOOKS_OFF === '1';
 }
 
+/**
+ * Is git turned off for the memory store? `LOOP_MEMORY_GIT=off` (or `0`) for one
+ * shell, `.loop/config.json` → `{"memory":{"git":false}}` for the project. The
+ * project chose to keep `.loop/memory/` out of git and accepts that a Delete is
+ * then permanent, so nothing should keep telling it to commit the store.
+ */
+export function memoryGitOff(cwd) {
+  const env = process.env.LOOP_MEMORY_GIT;
+  if (env === 'off' || env === '0') return true;
+  try {
+    const cfg = JSON.parse(readFileSync(join(cwd, '.loop', 'config.json'), 'utf8'));
+    return cfg?.memory?.git === false;
+  } catch { return false; }
+}
+
 export function loadState(cwd) {
   const p = join(cwd, '.loop', 'state.json');
   if (!existsSync(p)) return null;

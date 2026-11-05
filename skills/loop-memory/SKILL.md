@@ -361,6 +361,8 @@ Delete**:
   directory, so a project that ignores `.loop/` ignores the store with it; the
   pattern that works is `.loop/*` + `!.loop/memory/` + `.loop/memory/scratch/`.
   `loop-reminder` says so at session start when it finds the store ignored.
+  A store opted out of git (the loop-engine skill's `.loop/config.json`) has no
+  archive: Demote, and Delete only an entry that would mislead.
 
 **The consolidation trigger.** When one `[type][area]` cluster passes ~5 index
 lines, consolidating it is due: state the principle they share as one entry, and

@@ -18,7 +18,7 @@ function runHook(script, stdinObj, env = {}) {
   const r = spawnSync('node', [join(HOOKS, script)], {
     input: JSON.stringify(stdinObj),
     encoding: 'utf8',
-    env: { ...process.env, LOOP_HOOKS_OFF: '', ...env },
+    env: { ...process.env, LOOP_HOOKS_OFF: '', LOOP_MEMORY_GIT: '', ...env },
     timeout: 10000,
   });
   return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '' };
@@ -532,6 +532,19 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   let r = runHook('loop-reminder.mjs', { cwd: t });
   check('reminder: an un-ignored store nobody added still warns',
     r.out.includes('is tracked'), r.out.slice(0, 160));
+
+  // The opt-out: a project that keeps the store out of git on purpose.
+  r = runHook('loop-reminder.mjs', { cwd: t }, { LOOP_MEMORY_GIT: 'off' });
+  check('reminder: LOOP_MEMORY_GIT=off silences the untracked warning',
+    !r.out.includes('is tracked') && r.out.includes('Project memory'), r.out.slice(0, 160));
+  writeFileSync(join(t, '.loop', 'config.json'), JSON.stringify({ memory: { git: false } }));
+  r = runHook('loop-reminder.mjs', { cwd: t });
+  check('reminder: config memory.git=false silences the untracked warning',
+    !r.out.includes('is tracked') && r.out.includes('Project memory'), r.out.slice(0, 160));
+  writeFileSync(join(t, '.loop', 'config.json'), '{not json');
+  r = runHook('loop-reminder.mjs', { cwd: t });
+  check('reminder: an unreadable config.json still warns', r.out.includes('is tracked'), r.out.slice(0, 160));
+  rmSync(join(t, '.loop', 'config.json'));
 
   git('add', '.loop/memory');
   r = runHook('loop-reminder.mjs', { cwd: t });

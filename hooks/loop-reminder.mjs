@@ -20,7 +20,7 @@
 import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { readStdinJson, hooksOff, loadState, readIfExists, runStanding } from './lib.mjs';
+import { readStdinJson, hooksOff, loadState, readIfExists, runStanding, memoryGitOff } from './lib.mjs';
 
 const MAX_SLUGS = 8;
 
@@ -46,11 +46,13 @@ const MAX_SLUGS = 8;
  *
  * Outside a repo `git ls-files` exits non-zero, and that stays silent: a project
  * with no git at all has made a different choice, and a hook that lectures it
- * about recoverability every session is noise rather than a signal.
+ * about recoverability every session is noise rather than a signal. A project
+ * that switched git off for the store (`memoryGitOff`) made the same choice
+ * explicitly, and stays silent for the same reason.
  */
 function memoryUntracked(cwd) {
   const memDir = join(cwd, '.loop', 'memory');
-  if (!existsSync(memDir)) return false;
+  if (!existsSync(memDir) || memoryGitOff(cwd)) return false;
   try {
     const tracked = execFileSync('git', ['ls-files'], { cwd: memDir, encoding: 'utf8' });
     return tracked.trim() === '';
@@ -130,7 +132,8 @@ async function main() {
       `The contract commits .loop/ by default — drop the \`.loop/\` line from .gitignore before the next ` +
       `/loop-engineering:memory pass. To keep run state out while still tracking the store, git cannot ` +
       `un-ignore a child of an ignored directory, so the parent must be \`.loop/*\` + \`!.loop/memory/\` ` +
-      `+ \`.loop/memory/scratch/\`.\n`;
+      `+ \`.loop/memory/scratch/\`. To keep the store out of git on purpose, set ` +
+      `\`{"memory":{"git":false}}\` in .loop/config.json (or LOOP_MEMORY_GIT=off) and this line stops.\n`;
   }
 
   if (out) process.stdout.write(out);

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 — 2026-11-05
+
+**A project can keep its memory store out of git on purpose.** `loop-reminder`
+warned at every session start that nothing under `.loop/memory/` was tracked,
+with no way to say "I know".
+
+- **`.loop/config.json`** → `{"memory":{"git":false}}` (per project), or
+  `LOOP_MEMORY_GIT=off` (per shell), silences that warning. An unreadable config
+  still warns.
+- **Contract:** with the store outside git there is no archive behind Delete, so
+  maintenance demotes instead and deletes only an entry that would mislead
+  (`skills/loop-engine`, pointed to from `skills/loop-memory`).
+- three new hook checks (157).
+
 ## 1.1.1 — 2026-11-02
 
 **A tenth man spawned as a teammate is turned back before it runs.** With agent
