@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.3.0 — 2026-11-05
+
+**A hands-off run no longer stops to ask you about a tenth-man dispute that a
+fresh arbiter can settle.** After two critic rounds that still asked for
+changes, `--hands-off` stopped the epic as `stuck — tenth-man dispute` and
+waited for the user it had promised not to interrupt.
+
+- **Severity.** Every `plan-critic` finding carries `blocker | critical | major |
+  minor`, and the verdict is `APPROVE | REVISE | REJECT` — any blocker or
+  critical makes it REJECT. `loop-critique.mjs` records the severity counts and
+  rounds a mislabelled verdict up, never down; a findings section with a line
+  it cannot classify is `unreadable`. The critic's output contract changed:
+  `- **Finding N (<severity>):**`, and an APPROVE writes `None` there.
+- **`tenth-man-arbiter`** (new agent; Codex skill `loop-arbiter`). Under
+  `--hands-off`, after two open rounds, it rules each finding of the latest
+  round UPHELD or OVERRULED with its severity. `agent-track` records the ruling
+  as `.loop/critique/a<N>.md`; the outcome is computed from its lines, not its
+  heading. `boundary-gate` refuses a named arbiter spawn and hand edits of the
+  ledger.
+- **PROCEED** (no upheld blocker or critical): the breaker lets the item run and
+  names how many findings were deferred. The ruling is copied to
+  `.loop/epics/<slug>/rulings/`, and the epic gate gains a line that reads it
+  with `loop-critique.mjs deferred --epic <slug>` — the upheld majors and minors
+  are fixed in one pass on the integration row.
+- **REDESIGN** (an upheld blocker or critical): the runner stops as
+  `stuck — redesign`. `loop-critique.mjs excluded` prints those directions
+  (before the run is archived), you are re-interviewed with them excluded, and
+  the critic's new attack 9 holds the redesign to the list.
+- **Interactive runs are unchanged:** past two open rounds the dispute still
+  comes to you, now with severities, and your ruling is `tenth_man_ruling`. A
+  ruling must postdate the last REVISE *or* REJECT.
+- **Model rule:** critic and arbiter run on the strongest model available, and
+  on one that differs from the designer's whenever one exists.
+- Before announcing: re-spawn the installed `plan-critic` on the fixture
+  variants (CLAUDE.md) — its output contract changed.
+- tests: hooks 1056, loop-critique 594, loop-breaker 87, codex 13.
+
 ## 1.2.0 — 2026-11-05
 
 **A project can keep its memory store out of git on purpose.** `loop-reminder`

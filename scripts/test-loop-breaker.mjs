@@ -5,6 +5,69 @@
  */
 
 import { analyze, contextBlock, errorSignature, resolveThresholds, similarity } from './loop-breaker.mjs';
+import { recordCritique, recordRuling } from './loop-critique.mjs';
+import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+// Hands-off disputes past two open rounds, settled by the arbiter's ruling.
+const OPEN2 = (verdicts = ['REVISE', 'REVISE']) => {
+  const records = verdicts.map((v, i) => ({ file: `critique/r${i + 1}.md`, round: i + 1, verdict: v, source: 'hook' }));
+  return { run_id: 'r1', records, latest: records[records.length - 1], approved: false,
+    revise_rounds: verdicts.filter((v) => v === 'REVISE').length, open_rounds: verdicts.filter((v) => v !== 'APPROVE').length };
+};
+const RULED = (ruling, extra = {}) => ({ latest: { file: 'critique/a1.md', seq: 1, ruling, judged: 'r2', source: 'hook',
+  upheld: { blocker: 0, critical: ruling === 'REDESIGN' ? 1 : 0, major: 2, minor: 1 }, ...extra }, stale: false, ruling });
+const S0 = { run_id: 'r1', tier: 'medium', iteration: 0, history: [] };
+const ARBITER_CASES = [
+  { name: 'arbiter — hands-off, PROCEED on the current hash, hook: the goal starts and the deferred count is named',
+    stop: false, warnings: ['ruled PROCEED', '3 finding(s) deferred'],
+    state: S0, env: { handsOff: true, critique: OPEN2(), arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — hands-off, REDESIGN: stop, naming `stuck — redesign` and `loop-critique.mjs excluded`',
+    stop: true, reason: 'tenth-man', detail: ['stuck — redesign', 'loop-critique.mjs excluded'],
+    state: S0, env: { handsOff: true, critique: OPEN2(), arbiter: RULED('REDESIGN') } },
+  { name: 'arbiter — hands-off, no ruling: stop naming tenth-man-arbiter',
+    stop: true, reason: 'tenth-man', detail: ['tenth-man-arbiter'],
+    state: S0, env: { handsOff: true, critique: OPEN2(), arbiter: { latest: null, stale: false, ruling: null } } },
+  { name: 'arbiter — hands-off, a stale PROCEED (hash mismatch): stop naming design_hash and the arbiter',
+    stop: true, reason: 'tenth-man', detail: ['design_hash', 'tenth-man-arbiter'],
+    state: S0, env: { handsOff: true, critique: OPEN2(), arbiter: { ...RULED('PROCEED'), stale: true, ruling: null } } },
+  { name: 'arbiter — hands-off, a relayed PROCEED without host codex: stop',
+    stop: true, reason: 'tenth-man', detail: ['relayed', 'tenth-man-arbiter'],
+    state: S0, env: { handsOff: true, critique: OPEN2(), arbiter: RULED('PROCEED', { source: 'relay' }) } },
+  { name: 'arbiter — hands-off, a relayed PROCEED with host codex outside Claude Code: the goal starts, with a warning',
+    stop: false, warnings: ['ruled PROCEED', 'relayed'],
+    state: { ...S0, host: 'codex' }, env: { handsOff: true, critique: OPEN2(), arbiter: RULED('PROCEED', { source: 'relay' }) } },
+  { name: 'arbiter — hands-off, an unreadable ruling: stop naming the arbiter',
+    stop: true, reason: 'tenth-man', detail: ['unreadable', 'tenth-man-arbiter'],
+    state: S0, env: { handsOff: true, critique: OPEN2(), arbiter: RULED('unreadable') } },
+  { name: 'arbiter — hands-off, one REJECT + one REVISE are two open rounds: the PROCEED settles it',
+    stop: false, warnings: ['ruled PROCEED'],
+    state: S0, env: { handsOff: true, critique: OPEN2(['REJECT', 'REVISE']), arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — hands-off, one REJECT + one REVISE and no ruling: stop naming the arbiter (two open rounds)',
+    stop: true, reason: 'tenth-man', detail: ['tenth-man-arbiter'],
+    state: S0, env: { handsOff: true, critique: OPEN2(['REJECT', 'REVISE']), arbiter: { latest: null, stale: false, ruling: null } } },
+  { name: 'arbiter — hands-off, ONE open round (REJECT) with a PROCEED on disk: not yet the arbiter\'s — resubmit',
+    stop: true, reason: 'tenth-man',
+    state: S0, env: { handsOff: true, critique: OPEN2(['REJECT']), arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — hands-off, two open rounds then an unreadable latest critic round, a current PROCEED on disk: stop — the newest round is no verdict',
+    stop: true, reason: 'tenth-man',
+    state: S0, env: { handsOff: true, critique: OPEN2(['REVISE', 'REVISE', 'unreadable']), arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — hands-off, two open rounds then an APPROVE that went stale: stop — a stale APPROVE is no verdict, and no arbiter rules it',
+    stop: true, reason: 'tenth-man', detail: ['design_hash'],
+    state: S0, env: { handsOff: true, critique: { ...OPEN2(['REVISE', 'REVISE', 'APPROVE']), stale: true }, arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — hands-off, the design changed after the latest critic round: stop, resubmit to a critic — even with a PROCEED on disk',
+    stop: true, reason: 'tenth-man', detail: ['design_hash', 'plan-critic', 'tenth-man-arbiter'],
+    state: S0, env: { handsOff: true, critique: { ...OPEN2(), stale: true }, arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — interactive (handsOff absent), two open rounds, a hook PROCEED on the current hash: stop — the user rules',
+    stop: true, reason: 'tenth-man', detail: ['tenth_man_ruling'],
+    state: S0, env: { critique: OPEN2(), arbiter: RULED('PROCEED') } },
+  { name: 'arbiter — interactive, REVISE + REJECT and a ruling that resolves: the goal starts (open rounds counted)',
+    stop: false,
+    state: { ...S0, tenth_man_ruling: 'D-012' }, env: { ruling: true, critique: OPEN2(['REVISE', 'REJECT']), arbiter: RULED('REDESIGN') } },
+];
 
 const CASES = [
   {
@@ -466,8 +529,8 @@ const CASES = [
     env: { ruling: false, critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 2 } },
   },
   {
-    name: 'tenth man — two REVISE rounds under hands-off, no ruling: the runner stops',
-    stop: true, reason: 'tenth-man',
+    name: 'tenth man — two REVISE rounds under hands-off, no ruling: the runner stops, naming the arbiter',
+    stop: true, reason: 'tenth-man', detail: ['tenth-man-arbiter'],
     state: { run_id: 'r1', tier: 'small', iteration: 0, history: [] },
     env: { handsOff: true, critique: { run_id: 'r1', records: [{ file: 'critique/r1.md', round: 1, verdict: 'REVISE', source: 'hook' }, { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }], latest: { file: 'critique/r2.md', round: 2, verdict: 'REVISE', source: 'hook' }, approved: false, revise_rounds: 2 } },
   },
@@ -503,6 +566,7 @@ const CASES = [
     ] },
     env: { critique: { run_id: 'r1', records: [], latest: null, approved: false, revise_rounds: 0 } },
   },
+  ...ARBITER_CASES,
 ];
 
 const UNITS = [
@@ -554,11 +618,104 @@ for (const c of CASES) {
   const warnings = v.warnings ?? [];
   const warningsOk = !c.warnings
     || (c.warnings.length ? c.warnings.every((frag) => warnings.some((w) => w.includes(frag))) : warnings.length === 0);
-  const ok = v.stop === c.stop && (!c.reason || v.reason === c.reason) && advisoriesOk && countersOk && warningsOk;
+  // `detail: [...]` asserts each fragment appears in the stop's detail.
+  const detailOk = !c.detail || c.detail.every((frag) => String(v.detail ?? '').includes(frag));
+  const ok = v.stop === c.stop && (!c.reason || v.reason === c.reason) && advisoriesOk && countersOk && warningsOk && detailOk;
   if (!ok) failed++;
-  const detail = ok ? '' : ` (got stop=${v.stop} reason=${v.reason} advisories=[${got}] counters=${JSON.stringify(v.counters)} warnings=${JSON.stringify(warnings)})`;
+  const detail = ok ? '' : ` (got stop=${v.stop} reason=${v.reason} advisories=[${got}] counters=${JSON.stringify(v.counters)} warnings=${JSON.stringify(warnings)} detail=${JSON.stringify(v.detail ?? '')})`;
   console.log(`${ok ? 'ok  ' : 'FAIL'}  ${c.name}${detail}`);
 }
 
-console.log(failed === 0 ? `\nall ${UNITS.length + CASES.length} checks passed` : `\n${failed} check(s) failed`);
+// ------------------------------------------------- end to end: the real CLI on disk
+const BREAKER = join(dirname(fileURLToPath(import.meta.url)), 'loop-breaker.mjs');
+let e2e = 0;
+const e2eCheck = (label, ok, detail = '') => { e2e++; if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'}  ${label}${ok || !detail ? '' : ` (${detail})`}`); };
+const NO_CC = { ...process.env, CLAUDECODE: '' };
+const breakerOn = (dir) => spawnSync(process.execPath, [BREAKER, '--state', join(dir, 'state.json')], { encoding: 'utf8', env: NO_CC });
+const REV = '## Verdict: REVISE\n\n### Findings\n- **Finding 1 (major):** a\n- **Finding 2 (minor):** b\n';
+const REJ = '## Verdict: REJECT\n\n### Findings\n- **Finding 1 (critical):** c\n';
+{
+  // (i) hands-off: two REVISE + a hook PROCEED → CONTINUE; a design edit after it → stale stop.
+  const root = mkdtempSync(join(tmpdir(), 'loop-breaker-arb-'));
+  const dir = join(root, '.loop');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ status: 'designed', run_id: 'run-h', tier: 'medium', iteration: 0, hands_off: true, history: [] }));
+  writeFileSync(join(dir, 'goal.md'), '# Goal\nG\n');
+  writeFileSync(join(dir, 'design.md'), '# Design\nD\n');
+  recordCritique(dir, REV, { source: 'hook' });
+  recordCritique(dir, REV, { source: 'hook' });
+  const before = breakerOn(dir);
+  e2eCheck('e2e (i): hands-off, two REVISE and no ruling → exit 1 naming tenth-man-arbiter', before.status === 1 && /tenth-man-arbiter/.test(before.stderr), before.stderr);
+  recordRuling(dir, '## Ruling: PROCEED\n\n### Findings ruled\n- r2#1 — UPHELD — major — a holds\n- r2#2 — UPHELD — minor — b holds\n', { source: 'hook' });
+  const go = breakerOn(dir);
+  e2eCheck('e2e (i): hands-off, two REVISE + a hook PROCEED a1.md → exit 0 CONTINUE, deferred count on stderr',
+    go.status === 0 && /^CONTINUE/.test(go.stdout) && /2 finding\(s\) deferred/.test(go.stderr), `${go.status} ${go.stdout}${go.stderr}`);
+  writeFileSync(join(dir, 'design.md'), '# Design\nD, edited after the ruling\n');
+  const stale = breakerOn(dir);
+  e2eCheck('e2e (i): a one-line design.md edit after the PROCEED → exit 1 naming design_hash and tenth-man-arbiter',
+    stale.status === 1 && /design_hash/.test(stale.stderr) && /tenth-man-arbiter/.test(stale.stderr), `${stale.status} ${stale.stdout}${stale.stderr}`);
+  rmSync(root, { recursive: true, force: true });
+}
+{
+  // (iii) hands-off: the design is rewritten after r2 and an arbiter then rules
+  // PROCEED on it — no critic read that design, so the goal does not start.
+  const root = mkdtempSync(join(tmpdir(), 'loop-breaker-arb3-'));
+  const dir = join(root, '.loop');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ status: 'designed', run_id: 'run-k', tier: 'medium', iteration: 0, hands_off: true, history: [] }));
+  writeFileSync(join(dir, 'goal.md'), '# Goal\nG\n');
+  writeFileSync(join(dir, 'design.md'), '# Design\nD\n');
+  recordCritique(dir, REV, { source: 'hook' });
+  recordCritique(dir, REV, { source: 'hook' });
+  writeFileSync(join(dir, 'design.md'), '# Design\nD rewritten after r2, never seen by a critic\n');
+  recordRuling(dir, '## Ruling: PROCEED\n\n### Findings ruled\n- r2#1 — UPHELD — major — a holds\n- r2#2 — UPHELD — minor — b holds\n', { source: 'hook' });
+  const r = breakerOn(dir);
+  e2eCheck('e2e (iii): hands-off, a design edit between r2 and a PROCEED → exit 1 naming design_hash, no CONTINUE',
+    r.status === 1 && /design_hash/.test(r.stderr) && !/CONTINUE/.test(r.stdout), `${r.status} ${r.stdout}${r.stderr}`);
+  rmSync(root, { recursive: true, force: true });
+}
+{
+  // (iv) hands-off: a PROCEED on r2, then a third critic round on the same
+  // design. The critique is current; only the ruling's own standing (it judged
+  // r2, not r3) can refuse it — this case isolates rulingStanding's staleness.
+  const root = mkdtempSync(join(tmpdir(), 'loop-breaker-arb4-'));
+  const dir = join(root, '.loop');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ status: 'designed', run_id: 'run-m', tier: 'medium', iteration: 0, hands_off: true, history: [] }));
+  writeFileSync(join(dir, 'goal.md'), '# Goal\nG\n');
+  writeFileSync(join(dir, 'design.md'), '# Design\nD\n');
+  recordCritique(dir, REV, { source: 'hook' });
+  recordCritique(dir, REV, { source: 'hook' });
+  recordRuling(dir, '## Ruling: PROCEED\n\n### Findings ruled\n- r2#1 — UPHELD — major — a holds\n- r2#2 — UPHELD — minor — b holds\n', { source: 'hook' });
+  e2eCheck('e2e (iv): the PROCEED on r2 alone → exit 0 (control)', breakerOn(dir).status === 0);
+  recordCritique(dir, REV, { source: 'hook' });
+  const r = breakerOn(dir);
+  e2eCheck('e2e (iv): a third critic round after the PROCEED on the same design → exit 1 naming tenth-man-arbiter (the ruling judged r2)',
+    r.status === 1 && /tenth-man-arbiter/.test(r.stderr) && !/CONTINUE/.test(r.stdout), `${r.status} ${r.stdout}${r.stderr}`);
+  rmSync(root, { recursive: true, force: true });
+}
+{
+  // (ii) interactive: r1 REVISE + r2 REJECT; a ruling written between them is not the ruling of r2.
+  const root = mkdtempSync(join(tmpdir(), 'loop-breaker-rule-'));
+  const dir = join(root, '.loop');
+  mkdirSync(join(dir, 'memory', 'decisions'), { recursive: true });
+  writeFileSync(join(dir, 'state.json'), JSON.stringify({ status: 'designed', run_id: 'run-i', tier: 'medium', iteration: 0, tenth_man_ruling: 'D-900', history: [] }));
+  const t0 = Date.now();
+  recordCritique(dir, REV, { source: 'hook', now: new Date(t0 - 120_000) });
+  recordCritique(dir, REJ, { source: 'hook', now: new Date(t0 - 30_000) });
+  const decision = join(dir, 'memory', 'decisions', 'durable.md');
+  writeFileSync(decision, '### D-900 · active · 2026-11-06\n**Decision:** ship as designed\n');
+  const between = (t0 - 60_000) / 1000;
+  utimesSync(decision, between, between);
+  const early = breakerOn(dir);
+  e2eCheck('e2e (ii): interactive REVISE→REJECT, a ruling written between them → exit 1 (rulingResolves counts REJECT)',
+    early.status === 1 && /tenth_man_ruling/.test(early.stderr), `${early.status} ${early.stderr}`);
+  const after = Date.now() / 1000;
+  utimesSync(decision, after, after);
+  const late = breakerOn(dir);
+  e2eCheck('e2e (ii): the same heading written after r2 → exit 0', late.status === 0 && /^CONTINUE/.test(late.stdout), `${late.status} ${late.stdout}${late.stderr}`);
+  rmSync(root, { recursive: true, force: true });
+}
+
+console.log(failed === 0 ? `\nall ${UNITS.length + CASES.length + e2e} checks passed` : `\n${failed} check(s) failed`);
 process.exit(failed === 0 ? 0 : 1);

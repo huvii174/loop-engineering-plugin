@@ -5,12 +5,14 @@
  * asserting on exit codes and output. Exits 0 when all pass. No dependencies.
  */
 
+import { createHash } from 'node:crypto';
 import { spawnSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, readdirSync, chmodSync, symlinkSync, cpSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runStanding } from '../hooks/lib.mjs';
+import { recordCritique } from './loop-critique.mjs';
 
 const HOOKS = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks');
 
@@ -914,7 +916,7 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   const transcriptPath = join(d, 'critic.jsonl');
   writeFileSync(transcriptPath, [
     JSON.stringify({ type: 'user', message: { content: 'go' } }),
-    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '## Verdict: REVISE\n- **Finding 1:** z' }] } }),
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '## Verdict: REVISE\n\n### Findings\n- **Finding 1 (major):** z' }] } }),
     JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read' }] } }),
   ].join('\n'));
   t = stop(d, { agent_type: 'plan-critic', agent_transcript_path: transcriptPath });
@@ -929,7 +931,7 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   // stop payload's last message is only the closing text (or nothing).
   const handback = (dir, extra) => runHook('agent-track.mjs', { cwd: dir, hook_event_name: 'PostToolUse', session_id: 's1', agent_id: 'c2', tool_name: 'SubagentHandback', ...extra });
   const bodyOf = (file) => readFileSync(file, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '');
-  const report = '## Verdict: REVISE\n\n### Attacks mounted\n1. the cache key — grep — FAILED\n\n- **Finding 1:** the hand-back\n';
+  const report = '## Verdict: REVISE\n\n### Attacks mounted\n1. the cache key — grep — FAILED\n\n### Findings\n- **Finding 1 (major):** the hand-back\n';
   const marker = join(d, '.loop', '.agents-running', 's1', 'c2.critique');
   t = handback(d, { agent_type: 'loop-engineering:plan-critic', tool_input: { message: report } });
   const third = join(d, '.loop', 'critique', 'r3.md');
@@ -979,6 +981,201 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   t = stop(d, { agent_type: 'plan-critic', last_assistant_message: `Loop: /nonexistent/.loop\n${verdict}` });
   check('agent-track: a `Loop:` line naming no state.json falls back to this session’s .loop/', t.code === 0 && records(d).length === 6, `main=${records(d)}`);
 
+  // Every hook route writes the whole record, severity frontmatter included —
+  // compared against a text built here from the contract, over three input
+  // endings. `recorded:` is the one value the hook does not let a test inject,
+  // so it is read back from the written file; every other line is expected.
+  {
+    const EMPTY_HASH = createHash('sha256').update('').update('\0').update('').digest('hex').slice(0, 16);
+    const critical = '## Verdict: REVISE\n\n### Findings\n- **Finding 1 (critical):** the gate\n  - Failure scenario: s\n- **Finding 2 (minor):** a typo\n';
+    const want = (file, body, agentId) => {
+      const recorded = (/^recorded: (.*)$/m.exec(readFileSync(file, 'utf8')) || [])[1];
+      return ['---', 'run_id: run-w', 'round: 1', 'verdict: REJECT', 'declared: REVISE',
+        'severities: blocker=0 critical=1 major=0 minor=1', 'findings: 1=critical,2=minor',
+        'source: hook', `design_hash: ${EMPTY_HASH}`, `agent_id: ${agentId}`, `recorded: ${recorded}`, '---', ''].join('\n')
+        + body.trim() + '\n';
+    };
+    const ENDINGS = [['no newline', (x) => x.trimEnd()], ['one newline', (x) => x.trimEnd() + '\n'], ['blank lines', (x) => x.trimEnd() + '\n\n\n']];
+    const routes = [
+      ['PostToolUse SubagentHandback', (dd, body) => handback(dd, { agent_id: 'w1', agent_type: 'loop-engineering:plan-critic', tool_input: { message: body } }), 'w1'],
+      ['SubagentStop last_assistant_message', (dd, body) => stop(dd, { agent_id: 'w2', agent_type: 'plan-critic', last_assistant_message: body }), 'w2'],
+      ['SubagentStop transcript hand-back', (dd, body) => {
+        const tp = join(dd, 'hb.jsonl');
+        writeFileSync(tp, [JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message: body } }] } }),
+          JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Report delivered.' }] } })].join('\n'));
+        return stop(dd, { agent_id: 'w3', agent_type: 'plan-critic', agent_transcript_path: tp });
+      }, 'w3'],
+      ['SubagentStop transcript closing text', (dd, body) => {
+        const tp = join(dd, 'txt.jsonl');
+        writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: body }] } }));
+        return stop(dd, { agent_id: 'w4', agent_type: 'plan-critic', agent_transcript_path: tp });
+      }, 'w4'],
+    ];
+    for (const [route, run, agentId] of routes) {
+      for (const [ending, shape] of ENDINGS) {
+        const dd = proj({ state: { status: 'designed', run_id: 'run-w', tier: 'medium', iteration: 0, history: [] } });
+        const body = shape(critical);
+        const rr = run(dd, body);
+        const file = join(dd, '.loop', 'critique', 'r1.md');
+        const got = existsSync(file) ? readFileSync(file, 'utf8') : '';
+        const exp = existsSync(file) ? want(file, body, agentId) : '(no record)';
+        check(`agent-track: ${route} (${ending}) writes the whole record — severity frontmatter, REVISE rounded up to REJECT`,
+          rr.code === 0 && got === exp, `\n--- got\n${got}--- want\n${exp}`);
+      }
+    }
+  }
+
+  // The arbiter's ruling through every hook route, as the whole store of both
+  // trees after each write: route × epic none/set × judged tree (this session's
+  // .loop/, or a worktree slice named by `Loop:`) × starting store (empty, or
+  // another run's leftovers) × every ordered pair of outcomes × 3 endings. The
+  // ruling lands in the judged tree; the epic ledger copy under this session's
+  // cwd (A1); a hand-back is followed by its SubagentStop, which records nothing
+  // more.
+  {
+    const EMPTY_HASH = createHash('sha256').update('').update('\0').update('').digest('hex').slice(0, 16);
+    const R2 = '## Verdict: REVISE\n\n### Findings\n- **Finding 1 (major):** the cache\n- **Finding 2 (critical):** the gate\n- **Finding 3 (minor):** a typo\n';
+    const L = (n, call, sev) => `- r2#${n} — ${call} — ${sev} — reason ${n}`;
+    const arb = (loop, ruling, lines) => `Loop: ${loop}\n## Ruling: ${ruling}\n\n### Findings ruled\n${lines.join('\n')}\n\n### Why\nweighed both records\n`;
+    const OUT = {
+      PROCEED: [['PROCEED', [L(1, 'UPHELD', 'major'), L(2, 'OVERRULED', 'critical'), L(3, 'UPHELD', 'minor')]],
+        ['ruling: PROCEED', 'judged: r2', 'upheld: blocker=0 critical=0 major=1 minor=1', 'overruled: 1']],
+      REDESIGN: [['REDESIGN', [L(1, 'UPHELD', 'major'), L(2, 'UPHELD', 'critical'), L(3, 'OVERRULED', 'minor')]],
+        ['ruling: REDESIGN', 'judged: r2', 'upheld: blocker=0 critical=1 major=1 minor=0', 'overruled: 1']],
+      unreadable: [['PROCEED', [L(1, 'UPHELD', 'major')]], ['ruling: unreadable', 'declared: PROCEED', 'unreadable: unruled: r2#2, r2#3', 'judged: r2']],
+    };
+    const ENDINGS = [['no newline', (x) => x.trimEnd()], ['one newline', (x) => x.trimEnd() + '\n'], ['blank lines', (x) => x.trimEnd() + '\n\n\n']];
+    const LEFTOVER = (seq) => `---\nrun_id: run-old\nkind: ruling\nseq: ${seq}\nruling: PROCEED\njudged: r2\nupheld: blocker=0 critical=0 major=0 minor=0\noverruled: 0\nsource: hook\ndesign_hash: 0000000000000000\nrecorded: 2026-11-01T00:00:00.000Z\n---\nold run ${seq}\n`;
+    const snapshot = (tree) => {
+      const out = {};
+      const walk = (dd) => {
+        if (!existsSync(dd)) return;
+        for (const e of readdirSync(dd, { withFileTypes: true })) {
+          const pp = join(dd, e.name);
+          if (e.isDirectory()) walk(pp); else out[relative(tree, pp)] = readFileSync(pp, 'utf8');
+        }
+      };
+      walk(join(tree, '.loop'));
+      return out;
+    };
+    const same = (a, b) => JSON.stringify(Object.keys(a).sort()) === JSON.stringify(Object.keys(b).sort()) && Object.keys(a).every((k) => a[k] === b[k]);
+    const ROUTES = [
+      ['PostToolUse SubagentHandback, then its SubagentStop', (dd, body, id) => {
+        const a = runHook('agent-track.mjs', { cwd: dd, hook_event_name: 'PostToolUse', session_id: 's9', agent_id: id, tool_name: 'SubagentHandback', agent_type: 'loop-engineering:tenth-man-arbiter', tool_input: { message: body } });
+        const b = runHook('agent-track.mjs', { cwd: dd, hook_event_name: 'SubagentStop', session_id: 's9', agent_id: id, agent_type: 'loop-engineering:tenth-man-arbiter', last_assistant_message: 'Report delivered.' });
+        return a.code === 0 && b.code === 0;
+      }],
+      ['SubagentStop last_assistant_message', (dd, body, id) => runHook('agent-track.mjs', { cwd: dd, hook_event_name: 'SubagentStop', session_id: 's9', agent_id: id, agent_type: 'tenth-man-arbiter', last_assistant_message: body }).code === 0],
+      ['SubagentStop transcript hand-back', (dd, body, id) => {
+        const tp = join(dd, `hb-${id}.jsonl`);
+        writeFileSync(tp, [JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message: body } }] } }),
+          JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Report delivered.' }] } })].join('\n'));
+        return runHook('agent-track.mjs', { cwd: dd, hook_event_name: 'SubagentStop', session_id: 's9', agent_id: id, agent_type: 'tenth-man-arbiter', agent_transcript_path: tp }).code === 0;
+      }],
+      ['SubagentStop transcript closing text', (dd, body, id) => {
+        const tp = join(dd, `txt-${id}.jsonl`);
+        writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: body }] } }));
+        return runHook('agent-track.mjs', { cwd: dd, hook_event_name: 'SubagentStop', session_id: 's9', agent_id: id, agent_type: 'tenth-man-arbiter', agent_transcript_path: tp }).code === 0;
+      }],
+    ];
+    for (const [route, run] of ROUTES) {
+      for (const epic of [null, 'demo']) {
+        for (const judgedKind of ['session', 'slice']) {
+          for (const start of ['empty', 'leftover']) {
+            for (const first of Object.keys(OUT)) {
+              for (const second of Object.keys(OUT)) {
+                for (const [ending, shape] of ENDINGS) {
+                  const runId = judgedKind === 'slice' ? 'run-s' : 'run-q';
+                  const state = (id) => ({ status: 'designed', run_id: id, tier: 'medium', iteration: 0, history: [], ...(epic ? { epic } : {}) });
+                  const main = proj({ state: state('run-q') });
+                  const slice = proj({ state: state('run-s') });
+                  const judged = judgedKind === 'slice' ? slice : main;
+                  recordCritique(join(judged, '.loop'), R2.replace('the cache', 'first round'), { source: 'hook', now: new Date('2026-11-05T00:00:01Z') });
+                  recordCritique(join(judged, '.loop'), R2, { source: 'hook', now: new Date('2026-11-05T00:00:02Z') });
+                  const names = start === 'leftover' ? ['a3.md', 'a4.md'] : ['a1.md', 'a2.md'];
+                  if (start === 'leftover') {
+                    mkdirSync(join(judged, '.loop', 'critique'), { recursive: true });
+                    writeFileSync(join(judged, '.loop', 'critique', 'a1.md'), LEFTOVER(1));
+                    writeFileSync(join(judged, '.loop', 'critique', 'a2.md'), LEFTOVER(2));
+                    for (const tree of [main, slice]) {
+                      mkdirSync(join(tree, '.loop', 'epics', 'demo', 'rulings'), { recursive: true });
+                      writeFileSync(join(tree, '.loop', 'epics', 'demo', 'rulings', 'run-old.md'), LEFTOVER(2));
+                    }
+                  }
+                  const modelMain = snapshot(main);
+                  const modelSlice = snapshot(slice);
+                  const model = judgedKind === 'slice' ? modelSlice : modelMain;
+                  let ok = true;
+                  let detail = '';
+                  [first, second].forEach((outcome, k) => {
+                    const [[declared, lines], fields] = OUT[outcome];
+                    const body = shape(arb(join(judged, '.loop'), declared, lines));
+                    const id = `arb${k}`;
+                    const ran = run(main, body, id);
+                    const rel = join('.loop', 'critique', names[k]);
+                    const written = existsSync(join(judged, rel)) ? readFileSync(join(judged, rel), 'utf8') : '';
+                    const recorded = (/^recorded: (.*)$/m.exec(written) || [])[1];
+                    const text = ['---', `run_id: ${runId}`, 'kind: ruling', `seq: ${k + 1}`, ...fields, 'source: hook', `design_hash: ${EMPTY_HASH}`,
+                      `agent_id: ${id}`, `recorded: ${recorded}`, '---', ''].join('\n') + body.trim() + '\n';
+                    model[rel] = text;
+                    const wantMain = { ...modelMain };
+                    const wantSlice = { ...modelSlice };
+                    if (epic && outcome === 'PROCEED') wantMain[join('.loop', 'epics', 'demo', 'rulings', `${runId}.md`)] = text;
+                    const gotMain = snapshot(main);
+                    const gotSlice = snapshot(slice);
+                    if (!ran || !same(gotMain, wantMain) || !same(gotSlice, wantSlice)) {
+                      ok = false;
+                      const diff = (g, w) => [...new Set([...Object.keys(g), ...Object.keys(w)])].filter((key) => g[key] !== w[key]);
+                      detail ||= `after step ${k + 1} (${outcome}): ran=${ran}; main differs at ${JSON.stringify(diff(gotMain, wantMain))}; slice differs at ${JSON.stringify(diff(gotSlice, wantSlice))}`;
+                    }
+                  });
+                  check(`agent-track ruling: ${route} × epic ${epic ?? 'none'} × judged ${judgedKind} × start ${start} × ${first} then ${second} (${ending}) — whole store of both trees`, ok, detail);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // C2 (b) through the hook: the ruling the record carries is computed, never
+  // the heading — a declared PROCEED with an upheld critical, a foreign round,
+  // an unclassified line, an unruled finding — each the whole record, 3 endings.
+  {
+    const EMPTY_HASH = createHash('sha256').update('').update('\0').update('').digest('hex').slice(0, 16);
+    const R2 = '## Verdict: REVISE\n\n### Findings\n- **Finding 1 (major):** the cache\n- **Finding 2 (critical):** the gate\n';
+    const L = (rr, n, call, sev) => `- r${rr}#${n} — ${call} — ${sev} — reason ${n}`;
+    const body = (lines) => `## Ruling: PROCEED\n\n### Findings ruled\n${lines.join('\n')}\n`;
+    const CASES = [
+      ['a declared PROCEED with an UPHELD critical → REDESIGN', body([L(2, 1, 'OVERRULED', 'major'), L(2, 2, 'UPHELD', 'critical')]),
+        ['ruling: REDESIGN', 'declared: PROCEED', 'judged: r2', 'upheld: blocker=0 critical=1 major=0 minor=0', 'overruled: 1']],
+      ['a declared PROCEED with an UPHELD blocker alone → REDESIGN', body([L(2, 1, 'UPHELD', 'blocker'), L(2, 2, 'OVERRULED', 'critical')]),
+        ['ruling: REDESIGN', 'declared: PROCEED', 'judged: r2', 'upheld: blocker=1 critical=0 major=0 minor=0', 'overruled: 1']],
+      ['a ruled line for another round (foreign) → unreadable', body([L(2, 1, 'UPHELD', 'major'), L(2, 2, 'OVERRULED', 'critical'), L(1, 2, 'UPHELD', 'major')]),
+        ['ruling: unreadable', 'declared: PROCEED', 'unreadable: line 6: rules r1#2, but the judged round is r2 (foreign)', 'judged: r2']],
+      ['an unclassified line in the ruled region → unreadable', body(['Both rounds overstate it.', L(2, 1, 'UPHELD', 'major'), L(2, 2, 'OVERRULED', 'critical')]),
+        ['ruling: unreadable', 'declared: PROCEED', 'unreadable: line 4: not a ruled line or a continuation — "Both rounds overstate it."', 'judged: r2']],
+      ['a finding of the judged round left unruled → unreadable', body([L(2, 1, 'UPHELD', 'major')]),
+        ['ruling: unreadable', 'declared: PROCEED', 'unreadable: unruled: r2#2', 'judged: r2']],
+    ];
+    const ENDINGS = [['no newline', (x) => x.trimEnd()], ['one newline', (x) => x.trimEnd() + '\n'], ['blank lines', (x) => x.trimEnd() + '\n\n\n']];
+    for (const [label, text, fields] of CASES) {
+      for (const [ending, shape] of ENDINGS) {
+        const dd = proj({ state: { status: 'designed', run_id: 'run-b', tier: 'medium', iteration: 0, history: [] } });
+        recordCritique(join(dd, '.loop'), R2.replace('the cache', 'round one'), { source: 'hook' });
+        recordCritique(join(dd, '.loop'), R2, { source: 'hook' });
+        const b = shape(text);
+        const rr = runHook('agent-track.mjs', { cwd: dd, hook_event_name: 'SubagentStop', session_id: 's8', agent_id: 'arb-b', agent_type: 'tenth-man-arbiter', last_assistant_message: b });
+        const file = join(dd, '.loop', 'critique', 'a1.md');
+        const got = existsSync(file) ? readFileSync(file, 'utf8') : '';
+        const recorded = (/^recorded: (.*)$/m.exec(got) || [])[1];
+        const want = ['---', 'run_id: run-b', 'kind: ruling', 'seq: 1', ...fields, 'source: hook', `design_hash: ${EMPTY_HASH}`, 'agent_id: arb-b', `recorded: ${recorded}`, '---', ''].join('\n') + b.trim() + '\n';
+        check(`agent-track ruling: ${label} (${ending}) — whole record`, rr.code === 0 && got === want, `\n--- got\n${got}--- want\n${want}`);
+      }
+    }
+  }
+
   const bare = proj({});
   mkdirSync(join(bare, '.loop'), { recursive: true });
   t = stop(bare, { agent_type: 'plan-critic', last_assistant_message: verdict });
@@ -1022,6 +1219,41 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
   ];
   check('boundary-gate: a plain critic, a blank name, a team_name alone (deprecated, ignored), another agent type, a project without .loop/, or LOOP_HOOKS_OFF=1 → spawn allowed',
     allowed.every((x) => x.code === 0), allowed.map((x) => x.code).join(','));
+  // The arbiter is held the same way: a named spawn runs as a teammate whose ruling the hook never sees.
+  r = spawn(d, { subagent_type: 'loop-engineering:tenth-man-arbiter', model: 'fable', name: 'arbiter-1' });
+  check('boundary-gate: a tenth-man-arbiter spawned with `name` is refused and told to drop it',
+    r.code === 2 && /loop-engineering:tenth-man-arbiter as a plain subagent/.test(r.err) && /no ruling is recorded/.test(r.err), `code=${r.code} err=${r.err.slice(0, 200)}`);
+  r = spawn(d, { subagent_type: 'tenth-man-arbiter', name: 'a' }, { tool_name: 'Task' });
+  check('boundary-gate: the arbiter through the Task spelling is held the same way', r.code === 2, `code=${r.code}`);
+  const arbAllowed = [
+    spawn(d, { subagent_type: 'loop-engineering:tenth-man-arbiter', model: 'fable' }),
+    spawn(d, { subagent_type: 'loop-engineering:tenth-man-arbiter', name: ' ' }),
+    spawn(d, { subagent_type: 'not-a-tenth-man-arbiter-x', name: 'n' }),
+    spawn(proj({}), { subagent_type: 'loop-engineering:tenth-man-arbiter', name: 'n' }),
+    runHook('boundary-gate.mjs', { cwd: d, tool_name: 'Agent', tool_input: { subagent_type: 'tenth-man-arbiter', name: 'n' } }, { LOOP_HOOKS_OFF: '1' }),
+  ];
+  check('boundary-gate: a plain arbiter, a blank name, another agent type, a project without .loop/, or LOOP_HOOKS_OFF=1 → arbiter spawn allowed',
+    arbAllowed.every((x) => x.code === 0), arbAllowed.map((x) => x.code).join(','));
+
+  // The epic ledger of rulings is code-written: no hand edit, in any loop status.
+  r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: join(d, '.loop', 'epics', 'demo', 'rulings', 'run-q.md') } });
+  check('boundary-gate: an edit under .loop/epics/<slug>/rulings/ is blocked', r.code === 2 && /tenth-man ruling in the epic ledger/.test(r.err), `code=${r.code} err=${r.err.slice(0, 160)}`);
+  for (const alias of ['.loop/epics/demo/rulings/new.md', './.loop/epics/demo/rulings/run-q.md', '.loop/epics/./demo/rulings/run-q.md',
+    'src/../.loop/epics/demo/rulings/run-q.md', join(realpathSync(d), '.loop/epics/demo/rulings/run-q.md')]) {
+    r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: alias } });
+    check(`boundary-gate: the ledger alias ${alias.startsWith('/') ? '<realpath>/.loop/epics/demo/rulings/run-q.md' : alias} is blocked too`, r.code === 2, `code=${r.code}`);
+  }
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    r = runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.LOOP/Epics/Demo/Rulings/run-q.md' } });
+    check('boundary-gate: a case-folded ledger alias is blocked on a case-insensitive file system', r.code === 2, `code=${r.code}`);
+  }
+  const ledgerAllowed = [
+    runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/epics/demo/backlog.md' } }),
+    runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/epics/demo/rulings-notes.md' } }),
+    runHook('boundary-gate.mjs', { cwd: d, tool_input: { file_path: '.loop/epics/demo/rulings/x.md' } }, { LOOP_HOOKS_OFF: '1' }),
+  ];
+  check('boundary-gate: the epic backlog, a sibling name, or LOOP_HOOKS_OFF=1 → edit allowed',
+    ledgerAllowed.every((x) => x.code === 0), ledgerAllowed.map((x) => x.code).join(','));
 }
 
 // ------------------------------------------------------------ hooks.json wiring

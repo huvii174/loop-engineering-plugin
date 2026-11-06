@@ -124,7 +124,7 @@ try {
   const skillRoot = join(plugin, manifest.skills);
   const names = readdirSync(skillRoot).sort();
   check('all commands, shared contracts, and roles are exposed as valid skills', () => {
-    assert.equal(names.length, 14);
+    assert.equal(names.length, 15);
     const sources = new Set();
     for (const name of names) {
       const entry = readFileSync(join(skillRoot, name, 'SKILL.md'), 'utf8');
@@ -142,6 +142,7 @@ try {
       ['commands', 'breakdown.md'], ['commands', 'design.md'], ['commands', 'loop.md'],
       ['commands', 'run.md'], ['commands', 'status.md'], ['commands', 'memory.md'],
       ['agents', 'loop-verifier.md'], ['agents', 'plan-critic.md'], ['agents', 'epic-planner.md'],
+      ['agents', 'tenth-man-arbiter.md'],
     ]) assert(sources.has(join(plugin, directory, filename)), filename);
     for (const name of readdirSync(join(ROOT, 'skills'))) {
       assert(sources.has(join(plugin, 'skills', name, 'SKILL.md')), name);

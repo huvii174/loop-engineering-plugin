@@ -201,11 +201,19 @@ gate.
 - logic duplicated across items drifting apart;
 - an epic invariant a later item broke — including a refusal path, added after
   the item that proved "a refusal writes nothing", that writes a file;
-- spec fidelity of the whole against `epic.md` (its goal and ACs).
+- spec fidelity of the whole against `epic.md` (its goal and ACs);
+- the tenth man's deferred findings: the upheld `major` and `minor` findings
+  of every hands-off item the tenth-man-arbiter let PROCEED, printed by
+  `node "${CLAUDE_PLUGIN_ROOT}"/scripts/loop-critique.mjs deferred --epic <slug>`
+  as a ```loop-findings block. This reviewer drops each finding a later item
+  already fixed (with the `file:line` that shows it) and keeps the rest; it
+  owes no new findings of its own. A clean ledger prints `no deferred findings`.
 
 Never the per-goal dimensions on the accumulated diff: each item already had
-its gate. Refute each blocker/major as in Step 4. Confirmed ones go into one
-fenced block, fences at column 0:
+its gate. Refute each blocker/major as in Step 4 — the deferred lines too: an
+arbiter upheld them against one design, and the code may have moved since.
+Confirmed ones, the deferred lines among them, go into one fenced block, fences
+at column 0, so every fix lands on the one integration row:
 
 ````markdown
 ```loop-findings

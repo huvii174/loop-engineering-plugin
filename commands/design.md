@@ -100,7 +100,9 @@ the artifacts below. Two extra rules first:
 - **Archive before overwrite:** if `.loop/state.json` exists with a terminal
   status (`done`, `stuck`, `stopped-*`), run
   `node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-archive.mjs run --id <run_id>` before
-  writing the new goal — loop history must survive sub-goal transitions. The
+  writing the new goal — loop history must survive sub-goal transitions. A run
+  stopped `stuck — redesign` prints its excluded directions first (Step 2.5):
+  the archive moves the ruling they are read from. The
   script owns the move so the layout cannot drift; do it by hand and a copy
   lands inside its own previous copy.
 - **Epic linkage:** if `.loop/active-epic` exists (its one line is the epic
@@ -286,19 +288,50 @@ pending: write `Tenth-man: pending (unavailable: <reason>)` into `design.md`,
 tell the user what would enable the spawn, and stop. Under the runner the row
 becomes `stuck — tenth man unavailable`.
 
-**Critic model.** Under `--hands-off`, spawn it with `model:` set to a model
-other than the one running this gate — the strongest available that differs —
-so the critic's blind spots are not the designer's. Write which model into
+**Critic model.** Under `--hands-off`, spawn the critic — and the
+tenth-man-arbiter below — on the strongest model available, and on one that
+differs from the model running this gate whenever such a model exists, so the
+reviewer's blind spots are not the designer's. Where the strongest available is
+the designer's own (no stronger model is enabled), use it: a fresh context is
+the independence that cannot be skipped. Write which model into
 `confidence_note`. Interactive runs may do the same; the default is `inherit`.
 
-- **REVISE** → apply the findings (or rebut them with evidence), update the
+- **REVISE or REJECT** (REJECT: a `blocker` or `critical` finding) → apply
+  the findings (or rebut them with evidence in `design.md`), update the
   artifacts, resubmit to a fresh critic; its round is recorded beside the last.
-  **Maximum 2 rounds**; unresolved disagreement after that goes to the user
-  verbatim — both positions, quoted from the two records — and their ruling is
-  recorded as a `decisions/` entry, its ID in `state.json` `"tenth_man_ruling"`;
-  both are filled only from the user's words — the breaker checks that the
-  entry exists and postdates the dispute, not who wrote it. Under `--hands-off` no one is
-  there to rule: the item stops as `stuck — tenth-man dispute`.
+  **Maximum 2 open rounds.** What settles the disagreement after that depends
+  on who is present:
+  - **Interactive** — it goes to the user verbatim: both positions, quoted from
+    the two records, with each finding's severity. Their ruling is recorded as
+    a `decisions/` entry, its ID in `state.json` `"tenth_man_ruling"`; both are
+    filled only from the user's words — the breaker checks that the entry
+    exists and postdates the dispute, not who wrote it.
+  - **`--hands-off`** — the user is not asked; spawn
+    `Agent(subagent_type: "loop-engineering:tenth-man-arbiter")` in a fresh
+    context, with no `name`, on the model the critic gets. Its brief names the
+    absolute paths of `prompt.md`, `goal.md`, `design.md`, every
+    `.loop/critique/r<N>.md` of the run, and `judged: r<N>` (the latest open
+    round — the only one it rules). The arbiter rules on the design that
+    round's critic read: write any rebuttal before that round, and leave
+    `goal.md`/`design.md` untouched until the ruling — an edit in between is a
+    revision, which goes to a fresh critic first, and the breaker refuses a
+    ruling on a design no critic read. The `agent-track` hook records the ruling
+    as `.loop/critique/a<N>.md`; the outcome is computed from its ruled lines.
+    - **PROCEED** (no upheld blocker or critical) → the design stands exactly
+      as ruled: editing `goal.md` or `design.md` now voids the ruling. The
+      upheld `major` and `minor` findings are deferred — the hook copies the
+      ruling to `.loop/epics/<slug>/rulings/<run_id>.md`, and the epic gate
+      fixes them in one pass (`loop-engineering:loop-review` skill, Epic gate).
+    - **REDESIGN** (an upheld blocker or critical) → the item stops as
+      `stuck — redesign`. Before anything else — and before
+      `loop-archive.mjs run` moves this run's `critique/` into the archive —
+      print the excluded directions:
+      `node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-critique.mjs excluded`. Then
+      re-interview the user (Step 1) with that block in front of them: each
+      upheld blocker or critical is a direction the new design may not take.
+      The answers and the block go into the new `prompt.md` under
+      `## Excluded directions`, the design is rewritten under a new `run_id`,
+      and the critic's attack 9 holds the new design to the list.
 - **APPROVE** → quote its "Dissent on record" line from the record into
   `design.md` under `## Tenth-man dissent`, with the record's path — the user
   should see what the critic still worries about, and the loop should know which
@@ -311,6 +344,10 @@ with a `[dead]` entry or `solutions/` file in memory. When skipped, write
 `Tenth-man: skipped (tier)` into `design.md` so the omission is visible, not
 silent. `medium` and `large` always face the critic, and `--hands-off` never
 skips.
+
+The arbiter's own unavailability takes the same route as the critic's: the
+gate stays pending, and under the runner the row becomes `stuck — tenth man
+unavailable`.
 
 ## Step 3 — Handoff
 

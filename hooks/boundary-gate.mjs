@@ -56,6 +56,8 @@ const foldCase = process.platform === 'darwin' || process.platform === 'win32';
 
 /** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
 const isPlanCritic = (type) => typeof type === 'string' && /(^|:)plan-critic$/.test(type);
+/** `tenth-man-arbiter`, `loop-engineering:tenth-man-arbiter`. */
+const isArbiter = (type) => typeof type === 'string' && /(^|:)tenth-man-arbiter$/.test(type);
 const isSet = (v) => typeof v === 'string' && v.trim() !== '';
 
 async function main() {
@@ -65,12 +67,13 @@ async function main() {
 
   if (input.tool_name === 'Agent' || input.tool_name === 'Task') {
     const ti = input.tool_input || {};
-    if (!existsSync(join(cwd, '.loop')) || !isPlanCritic(ti.subagent_type)) return 0;
+    const who = isPlanCritic(ti.subagent_type) ? 'plan-critic' : isArbiter(ti.subagent_type) ? 'tenth-man-arbiter' : null;
+    if (!existsSync(join(cwd, '.loop')) || !who) return 0;
     if (!isSet(ti.name)) return 0;
     process.stderr.write(
-      `boundary-gate: spawn loop-engineering:plan-critic as a plain subagent — drop \`name\`. ` +
+      `boundary-gate: spawn loop-engineering:${who} as a plain subagent — drop \`name\`. ` +
       `With agent teams on, a named spawn runs as a teammate: its report never reaches the agent-track hook, so no ` +
-      `tenth-man round is recorded and the breaker refuses iteration 1. Keep subagent_type, ` +
+      `${who === 'plan-critic' ? 'tenth-man round' : 'ruling'} is recorded and the breaker refuses iteration 1. Keep subagent_type, ` +
       `model, description and prompt; everything else in the call is unchanged.\n`
     );
     return 2;
@@ -84,6 +87,13 @@ async function main() {
       `boundary-gate: "${target}" is a tenth-man record — written by the agent-track hook or ` +
       `scripts/loop-critique.mjs, never by hand. To answer a REVISE, revise the design and ` +
       `spawn loop-engineering:plan-critic again; its next round is recorded beside this one.\n`
+    );
+    return 2;
+  }
+  if (probe && /^\.loop\/epics\/[^/]+\/rulings\//.test(probe)) {
+    process.stderr.write(
+      `boundary-gate: "${target}" is a tenth-man ruling in the epic ledger — written by the agent-track hook or ` +
+      `scripts/loop-critique.mjs, never by hand. The epic gate reads it with \`loop-critique.mjs deferred\`.\n`
     );
     return 2;
   }

@@ -42,7 +42,7 @@
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { critiqueStanding } from './loop-critique.mjs';
+import { critiqueStanding, rulingStanding } from './loop-critique.mjs';
 
 /** Plugin version read from disk — the session's cached skill text can be stale
  *  after an update ("restart to apply"), but this script always runs from disk.
@@ -587,7 +587,27 @@ function tenthManGate(state, env) {
         `a hook — the verdict on record passed through the designer's hands.`,
     };
   }
-  if (env.ruling === true && c.revise_rounds >= 2) return {};
+  // Open rounds: REVISE and REJECT both ask for a change. Readers that predate
+  // REJECT pass only revise_rounds.
+  const open = c.open_rounds ?? c.revise_rounds ?? 0;
+  if (env.ruling === true && open >= 2) return {};
+
+  // Under --hands-off no user is there to rule a dispute past two open rounds:
+  // the tenth-man-arbiter's ruling settles it. Only here — an interactive run
+  // still waits for the user's ruling, whatever an arbiter may have said.
+  if (handsOff && open >= 2 && !c.approved && c.latest && (c.latest.verdict === 'REVISE' || c.latest.verdict === 'REJECT')) {
+    // The arbiter rules on the design the critic saw. An edit after the latest
+    // critic round is a revision: it goes back to a critic, not to the arbiter.
+    if (c.stale) {
+      return {
+        stop: true,
+        detail:
+          `${why}: goal.md/design.md changed after the latest critic round (${c.latest.file}; design_hash), so no critic ` +
+          `has read the design an arbiter would rule on. Resubmit it to a fresh loop-engineering:plan-critic; the agent-track hook records its round (design Step 2.5). A tenth-man-arbiter ruling on a design no critic read does not count.`,
+      };
+    }
+    return arbiterGate(env.arbiter, state, env, why, open);
+  }
 
   const how =
     'Spawn loop-engineering:plan-critic in a fresh context; the agent-track hook records its verdict ' +
@@ -612,14 +632,13 @@ function tenthManGate(state, env) {
         `(design_hash). Resubmit the current design. ${how}`,
     };
   }
-  if (c.latest.verdict === 'REVISE' && c.revise_rounds >= 2) {
+  if ((c.latest.verdict === 'REVISE' || c.latest.verdict === 'REJECT') && open >= 2) {
     return {
       stop: true,
       detail:
-        `${why}: the tenth man answered REVISE in ${c.revise_rounds} rounds. The disagreement goes to ` +
+        `${why}: the tenth man left ${open} open rounds (REVISE or REJECT). The disagreement goes to ` +
         `the user verbatim; record their ruling under .loop/memory/decisions/ (a heading carrying its ID, ` +
-        `written after the last REVISE) and the ID in state.json "tenth_man_ruling".` +
-        `${handsOff ? ' Under --hands-off no one is there to rule: the runner stops.' : ''}`,
+        `written after the last open round) and the ID in state.json "tenth_man_ruling".`,
     };
   }
   return {
@@ -627,6 +646,59 @@ function tenthManGate(state, env) {
     detail:
       `${why}: the latest tenth-man verdict (${c.latest.file}) is ${c.latest.verdict}, not APPROVE. ` +
       `Apply or rebut its findings in the design, then resubmit. ${how}`,
+  };
+}
+
+/**
+ * A hands-off dispute past two open rounds, settled by the arbiter's ruling on
+ * disk (rulingStanding in loop-critique.mjs): a PROCEED on the current design,
+ * captured by the hook, lets iteration 1 start with its deferred findings named;
+ * a REDESIGN stops the item for the user, with the excluded directions printed
+ * by code; anything else — no ruling, a stale one, an unreadable one, a relay
+ * where the hook is the route — names the arbiter to spawn.
+ */
+function arbiterGate(a, state, env, why, open) {
+  const spawn =
+    'Spawn loop-engineering:tenth-man-arbiter in a fresh context (no `name`); the agent-track hook records its ' +
+    'ruling under .loop/critique/ (design Step 2.5).';
+  const latest = a?.latest ?? null;
+  if (!latest) {
+    return { stop: true, detail: `${why}: ${open} open tenth-man rounds and no ruling recorded. ${spawn}` };
+  }
+  if (a.stale) {
+    return {
+      stop: true,
+      detail:
+        `${why}: the ruling in ${latest.file} judged another goal.md/design.md (design_hash) or an older round — ` +
+        `the design must stand as it was ruled. ${spawn}`,
+    };
+  }
+  const relayAllowed = state.host === 'codex' && env.claudeCode !== true;
+  if (latest.source !== 'hook' && !relayAllowed) {
+    return {
+      stop: true,
+      detail:
+        `${why}: the ruling in ${latest.file} was relayed, and relay counts only on a host without hooks ` +
+        `(state.json "host": "codex", and not under Claude Code). ${spawn}`,
+    };
+  }
+  if (latest.ruling === 'REDESIGN') {
+    return {
+      stop: true,
+      detail:
+        `${why}: the tenth-man-arbiter upheld a blocker or critical finding (${latest.file}) — the item stops as ` +
+        `\`stuck — redesign\`. Print the excluded directions with \`node loop-critique.mjs excluded\` BEFORE ` +
+        `archiving the run, and re-interview the user with them (design Step 2.5).`,
+    };
+  }
+  if (latest.ruling !== 'PROCEED') {
+    return { stop: true, detail: `${why}: the ruling in ${latest.file} is unreadable. ${spawn}` };
+  }
+  const deferred = (latest.upheld?.major ?? 0) + (latest.upheld?.minor ?? 0);
+  return {
+    warning:
+      `the tenth-man-arbiter ruled PROCEED (${latest.file}): ${deferred} finding(s) deferred to the epic gate ` +
+      `(loop-critique.mjs deferred).${latest.source === 'hook' ? '' : ' The ruling was relayed, not captured by a hook.'}`,
   };
 }
 
@@ -650,7 +722,7 @@ function handsOffFor(loopDir, state) {
 function rulingResolves(loopDir, state, critique) {
   const id = typeof state.tenth_man_ruling === 'string' ? state.tenth_man_ruling.trim() : '';
   if (!id || !/^[A-Za-z0-9][\w.-]*$/.test(id)) return false;
-  const revisedAt = Math.max(0, ...critique.records.filter((r) => r.verdict === 'REVISE').map((r) => Date.parse(r.recorded) || 0));
+  const revisedAt = Math.max(0, ...critique.records.filter((r) => r.verdict === 'REVISE' || r.verdict === 'REJECT').map((r) => Date.parse(r.recorded) || 0));
   const heading = new RegExp(`^#{2,4}\\s+${id.replace(/[.]/g, '\\.')}\\b`, 'm');
   const walk = (dir) => {
     let names;
@@ -804,6 +876,7 @@ function main(argv) {
     critique,
     handsOff: handsOffFor(loopDir, state),
     ruling: rulingResolves(loopDir, state, critique),
+    arbiter: rulingStanding(loopDir, state),
     claudeCode: process.env.CLAUDECODE === '1',
   });
   warn(verdict.warnings);

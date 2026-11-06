@@ -16,9 +16,10 @@
  * plain id, records nothing. Always exits 0 — it must never stand between the
  * session and its agents. Deterministic; fail-open; LOOP_HOOKS_OFF=1 bypass.
  *
- * It also records each plan-critic's verdict through loop-critique.mjs — the one
- * place the tenth man's words reach disk without passing through the session
- * whose design they judge. The critic's report arrives by one of two routes:
+ * It also records each plan-critic's verdict, and each tenth-man-arbiter's
+ * ruling, through loop-critique.mjs — the one place the tenth man's words reach
+ * disk without passing through the session whose design they judge. A report
+ * arrives by one of two routes:
  *
  *   - In auto mode (Claude Code ≥ 2.1.271) the critic delivers it by calling
  *     the `SubagentHandback` tool; its `message` is the report, and the stop
@@ -39,7 +40,7 @@
 import { mkdirSync, writeFileSync, unlinkSync, rmdirSync, existsSync, readFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { readStdinJson, hooksOff, isPlainId } from './lib.mjs';
-import { recordCritique, loopDirOf } from '../scripts/loop-critique.mjs';
+import { recordCritique, recordRuling, loopDirOf } from '../scripts/loop-critique.mjs';
 
 /** The tool a subagent in auto mode delivers its report through. */
 const HANDBACK_TOOL = 'SubagentHandback';
@@ -47,6 +48,22 @@ const HANDBACK_TOOL = 'SubagentHandback';
 /** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
 function isPlanCritic(type) {
   return typeof type === 'string' && /(^|:)plan-critic$/.test(type);
+}
+
+/** `tenth-man-arbiter`, `loop-engineering:tenth-man-arbiter`. */
+function isArbiter(type) {
+  return typeof type === 'string' && /(^|:)tenth-man-arbiter$/.test(type);
+}
+
+/**
+ * The two agents whose report this hook records, and how: the critic's as a
+ * round (`r<N>.md`), the arbiter's as a ruling (`a<N>.md`, plus the epic
+ * ledger copy under this session's cwd). Null for every other agent.
+ */
+function recorderFor(type) {
+  if (isPlanCritic(type)) return { kind: 'critique', write: (target, text, agent) => recordCritique(target, text, { source: 'hook', agentId: agent }) };
+  if (isArbiter(type)) return { kind: 'ruling', write: (target, text, agent, cwd) => recordRuling(target, text, { source: 'hook', agentId: agent, cwd }) };
+  return null;
 }
 
 /**
@@ -79,12 +96,16 @@ export function transcriptReport(path) {
   return { handback: '', closing };
 }
 
-/** Record `text` as the critic's round, in the `.loop/` its `Loop:` line names or this session's. */
-function recordVerdict(cwd, text, agent) {
+/**
+ * Record `text` with `recorder`, in the `.loop/` its `Loop:` line names or this
+ * session's. A ruling's epic ledger copy always lands under this session's cwd
+ * — the dispatching tree when the arbiter judged a worktree slice.
+ */
+function recordVerdict(cwd, text, agent, recorder) {
   const named = loopDirOf(text);
   const target = named && isAbsolute(named) && basename(named) === '.loop' && existsSync(join(named, 'state.json'))
     ? named : join(cwd, '.loop');
-  try { return recordCritique(target, text, { source: 'hook', agentId: agent }); } catch { return { error: 'threw' }; }
+  try { return recorder.write(target, text, agent, cwd); } catch { return { error: 'threw' }; }
 }
 
 async function main() {
@@ -96,15 +117,16 @@ async function main() {
   const agent = input.agent_id;
   if (!isPlainId(session) || !isPlainId(agent)) return;
   const dir = join(cwd, '.loop', '.agents-running', session);
-  const marker = join(dir, `${agent}.critique`);
+  const recorder = recorderFor(input.agent_type);
+  const marker = join(dir, `${agent}.${recorder?.kind ?? 'critique'}`);
   if (input.hook_event_name === 'SubagentStart') {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, agent), '');
   } else if (input.hook_event_name === 'PostToolUse') {
-    if (input.tool_name !== HANDBACK_TOOL || !isPlanCritic(input.agent_type)) return;
+    if (input.tool_name !== HANDBACK_TOOL || !recorder) return;
     const message = input.tool_input?.message;
     if (typeof message !== 'string' || !message.trim()) return;
-    const r = recordVerdict(cwd, message, agent);
+    const r = recordVerdict(cwd, message, agent, recorder);
     if (r && !r.error) {
       mkdirSync(dir, { recursive: true });
       writeFileSync(marker, r.file);
@@ -114,11 +136,11 @@ async function main() {
     const recorded = existsSync(marker);
     try { unlinkSync(marker); } catch { /* none */ }
     try { rmdirSync(dir); } catch { /* not empty, or gone */ }
-    if (isPlanCritic(input.agent_type) && !recorded) {
+    if (recorder && !recorded) {
       // A hand-back in the transcript is the report. Otherwise the stop payload's
       // final text is authoritative — the transcript may lag it.
       const report = transcriptReport(input.agent_transcript_path);
-      recordVerdict(cwd, report.handback || input.last_assistant_message || report.closing, agent);
+      recordVerdict(cwd, report.handback || input.last_assistant_message || report.closing, agent, recorder);
     }
   }
 }

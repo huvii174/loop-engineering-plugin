@@ -65,10 +65,13 @@ needed question; otherwise ask in the conversation and wait for the answer.
 **Tenth-man records.** Without lifecycle hooks nothing captures the critic's
 verdict for you: write `"host": "codex"` into `state.json` at the design gate,
 then pipe the plan-critic task's final output, unedited, into
-`node <plugin>/scripts/loop-critique.mjs record`. The record says
-`source: relay`, and the breaker accepts it with a warning. A
-different critic model under `--hands-off` (design Step 2.5) applies where the
-host lets a task choose its model; otherwise keep the host's.
+`node <plugin>/scripts/loop-critique.mjs record`. Under `--hands-off`, a
+tenth-man-arbiter task's ruling goes the same way, unedited, into
+`node <plugin>/scripts/loop-critique.mjs rule` (the `loop-arbiter` skill). Both
+records say `source: relay`, and the breaker accepts them with a warning. The
+critic and arbiter model rule of design Step 2.5 — the strongest available,
+differing from the designer's when one exists — applies where the host lets a
+task choose its model; otherwise keep the host's.
 
 **The implementer never grades itself.** If fresh-context delegation is
 unavailable, report the unavailable gate and keep it pending. Design interviews,

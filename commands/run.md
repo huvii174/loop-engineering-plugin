@@ -44,11 +44,14 @@ asking the user mid-flight. So before executing anything:
    pre-flight answers are the only interview material it will ever have.
 4. With `--hands-off`: skip the batch; every gap becomes an explicit numbered
    assumption in that item's `goal.md`, and the tenth-man critique becomes
-   **mandatory for every item regardless of tier**, on a model other than the
-   designer's — autonomy is paid for with stricter review, never looser
-   (self-modifying-loop red line). Design Step 2.5 owns the procedure and the
-   breaker holds it; a critic that cannot be spawned, or a dispute past its
-   two-round bound, stops the runner (routing below).
+   **mandatory for every item regardless of tier**, on the strongest model
+   available (one that differs from the designer's whenever one exists) —
+   autonomy is paid for with stricter review, never looser (self-modifying-loop
+   red line). A dispute past two open rounds is ruled by the tenth-man-arbiter,
+   not by you: a PROCEED lets the item run with its upheld major and minor
+   findings deferred to the epic gate; only an upheld blocker or critical stops
+   the runner. Design Step 2.5 owns the procedure and the breaker holds it
+   (routing below).
 5. Present the execution plan (order, tiers, expected gates per item, any
    human-gated items) and get one final go/no-go. This is the last question
    until something stops.
@@ -83,12 +86,23 @@ For each item in topo order:
      what silences the gate. Present the stuck diagnosis (competing hypotheses
      + recommended probe) and wait for the user. Never skip a stuck item to
      continue the epic — later items may depend on the lie.
-   - Tenth man unavailable or disputed (design Step 2.5) → **the runner
-     stops**: the row reads `stuck — tenth man unavailable` or `stuck —
-     tenth-man dispute`. Present the reason, or both positions quoted from the
-     `.loop/critique/` records, and wait. The user's ruling goes to
-     `decisions/` and `state.json` `tenth_man_ruling`; then the row returns to
-     `designed` and the run resumes.
+   - Tenth man or tenth-man-arbiter unavailable (design Step 2.5) → **the
+     runner stops**: the row reads `stuck — tenth man unavailable`. Present
+     the reason and what would enable the spawn, and wait.
+   - Interactive run, dispute past two open rounds → **the runner stops**:
+     present both positions quoted from the `.loop/critique/` records, with
+     their severities, and wait. The user's ruling goes to `decisions/` and
+     `state.json` `tenth_man_ruling`; then the row returns to `designed` and
+     the run resumes.
+   - Hands-off run, the tenth-man-arbiter ruled REDESIGN → **the runner stops
+     now** with the row `stuck — redesign`. First, before `loop-archive.mjs
+     run` archives the stuck run, print the excluded directions:
+     `node "${CLAUDE_PLUGIN_ROOT}"/scripts/loop-critique.mjs excluded`. Present
+     that block and re-interview the user for this item (design Step 2.5);
+     their answers and the block become the new `prompt.md`'s input. The row
+     returns to `designed` under a new `run_id`, and the run resumes.
+     A PROCEED is not a stop: the item runs, and its deferred findings wait
+     for the epic gate.
    - Item marked as a human gate in the backlog → stop BEFORE executing it and
      ask, even under `--hands-off`. (Listed in `run.json.human_gates`, so the
      gate stays silent there.)
@@ -129,7 +143,10 @@ manifest format, and the slice-prefix agent-naming rules that travel with it,
 live in the `loop-engineering:loop-engine` skill; a fan-out without the manifest
 is unresumable the moment this session dies — then run each item's
 design→loop there, and merge back sequentially, deleting each slice's manifest
-entry as it merges. Merge conflicts or test failures on merge send the item back
+entry as it merges. A slice that ran its own session holds its tenth-man-arbiter
+rulings in its own `.loop/epics/<slug>/rulings/`: copy that directory into the
+dispatching tree's before removing the worktree — the epic gate's deferred
+findings are read from there. Merge conflicts or test failures on merge send the item back
 to its worktree with the conflict context injected. Recommend parallel only when
 ≥2 independent items each of tier `small`+; the coordination overhead is real.
 Default remains sequential.
