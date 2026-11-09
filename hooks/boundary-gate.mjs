@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 /**
- * boundary-gate — PreToolUse hook on Edit/Write/MultiEdit/NotebookEdit and Agent/Task.
+ * boundary-gate — PreToolUse hook on Edit/Write/MultiEdit/NotebookEdit, Agent/Task and Bash.
+ *
+ * On Bash: refuses the call only when Git Bash is switched off for the project
+ * (`gitBashOff` in lib.mjs) — on Windows the Bash tool runs in Git Bash, and a
+ * project that switched it off runs commands with the PowerShell tool instead.
+ * Every other Bash call passes untouched.
  *
  * While a loop is `running`, mechanically blocks edits to paths protected by a
  * `Do not touch:` line under `## Global boundaries` in .loop/goal.md. Upgrades
@@ -25,7 +30,7 @@
 
 import { existsSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { readStdinJson, hooksOff, loadState, readIfExists, globToRegex, mdSection } from './lib.mjs';
+import { readStdinJson, hooksOff, loadState, readIfExists, globToRegex, mdSection, gitBashOff, PLUGIN_ROOT } from './lib.mjs';
 import { CRITIQUE_DIR } from '../scripts/loop-critique.mjs';
 
 /** A path with symlinks resolved as far as it exists — the file itself may not yet. */
@@ -64,6 +69,17 @@ async function main() {
   if (hooksOff()) return 0;
   const input = await readStdinJson();
   const cwd = input.cwd || process.cwd();
+
+  if (input.tool_name === 'Bash') {
+    if (!gitBashOff(cwd)) return 0;
+    process.stderr.write(
+      'boundary-gate: Git Bash is switched off for this project ({"shell":{"gitBash":false}} in .loop/config.json, ' +
+      'or LOOP_GIT_BASH=off). Run this command with the PowerShell tool instead. For a plugin script: ' +
+      `node "${join(PLUGIN_ROOT, 'scripts', '<script>.mjs')}" <args> — the absolute path, since PowerShell does not ` +
+      'expand "$CLAUDE_PLUGIN_ROOT".\n'
+    );
+    return 2;
+  }
 
   if (input.tool_name === 'Agent' || input.tool_name === 'Task') {
     const ti = input.tool_input || {};

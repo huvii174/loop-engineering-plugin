@@ -281,6 +281,12 @@ then demands before iteration 1 is the **Tenth man pending** row in the
 loop-engine skill's stop table; an edit to `goal.md` or `design.md` after the
 APPROVE (other than quoting the dissent) voids it.
 
+**A critic finished but `status` shows no round for it** → the hook did not run
+(on Windows, a Git Bash that failed to start). Run
+`node "$CLAUDE_PLUGIN_ROOT"/scripts/loop-critique.mjs recover` before re-spawning:
+it records each finished critic or arbiter from the transcript Claude Code wrote,
+as `source: transcript`, and lists any it skipped and why.
+
 **The designer never grades its own design.** The tenth man is a fresh context
 or it is absent. When the critic cannot be spawned — the Agent tool is missing
 or refused, or this gate is itself running inside a subagent — the gate stays

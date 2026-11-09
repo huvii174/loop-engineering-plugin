@@ -42,7 +42,7 @@
 import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { critiqueStanding, rulingStanding } from './loop-critique.mjs';
+import { CAPTURED_SOURCES, critiqueStanding, rulingStanding } from './loop-critique.mjs';
 
 /** Plugin version read from disk — the session's cached skill text can be stale
  *  after an update ("restart to apply"), but this script always runs from disk.
@@ -561,7 +561,8 @@ const CRITIQUED_TIERS = new Set(['medium', 'large']);
  * as it stands now (not `stale`) — or, once the two-round bound is spent,
  * `tenth_man_ruling` naming a decision on disk written after the last REVISE.
  * The record is written by the agent-track hook from the critic's own last
- * message; a relayed one counts only where no hook exists (`host: "codex"`).
+ * message (or by `loop-critique.mjs recover` from its transcript, when the hook
+ * did not run); a relayed one counts only where no hook exists (`host: "codex"`).
  * A critique the designer wrote of its own design is the substitution this
  * gate exists to refuse.
  *
@@ -580,11 +581,14 @@ function tenthManGate(state, env) {
   // designer does not write: a breaker running under Claude Code (CLAUDECODE=1)
   // is on the host where the hook is the route, whatever state.json says.
   const relayAllowed = state.host === 'codex' && env.claudeCode !== true;
-  if (c.approved && (c.latest.source === 'hook' || relayAllowed)) {
-    return c.latest.source === 'hook' ? {} : {
-      warning:
-        `the tenth man's APPROVE (${c.latest.file}) was relayed by the session, not captured by ` +
-        `a hook — the verdict on record passed through the designer's hands.`,
+  if (c.approved && (CAPTURED_SOURCES.has(c.latest.source) || relayAllowed)) {
+    if (c.latest.source === 'hook') return {};
+    return {
+      warning: c.latest.source === 'transcript'
+        ? `the tenth man's APPROVE (${c.latest.file}) was recovered from the critic's transcript ` +
+          `(loop-critique.mjs recover) — the hook did not run when it finished.`
+        : `the tenth man's APPROVE (${c.latest.file}) was relayed by the session, not captured by ` +
+          `a hook — the verdict on record passed through the designer's hands.`,
     };
   }
   // Open rounds: REVISE and REJECT both ask for a change. Readers that predate
@@ -612,7 +616,9 @@ function tenthManGate(state, env) {
   const how =
     'Spawn loop-engineering:plan-critic in a fresh context; the agent-track hook records its verdict ' +
     'under .loop/critique/. A critique the designer writes of its own design is not one — if the ' +
-    'critic cannot be spawned, the gate stays pending (design Step 2.5).';
+    'critic cannot be spawned, the gate stays pending (design Step 2.5). If a critic finished but its ' +
+    'hook did not run (on Windows, a Git Bash that failed to start), `node scripts/loop-critique.mjs recover` ' +
+    'records it from the transcript Claude Code wrote.';
   if (!c.latest) {
     return { stop: true, detail: `${why}: no tenth-man verdict is recorded for run ${c.run_id}. ${how}` };
   }
@@ -660,7 +666,8 @@ function tenthManGate(state, env) {
 function arbiterGate(a, state, env, why, open) {
   const spawn =
     'Spawn loop-engineering:tenth-man-arbiter in a fresh context (no `name`); the agent-track hook records its ' +
-    'ruling under .loop/critique/ (design Step 2.5).';
+    'ruling under .loop/critique/ (design Step 2.5). If one finished but its hook did not run, ' +
+    '`node scripts/loop-critique.mjs recover` records it from its transcript.';
   const latest = a?.latest ?? null;
   if (!latest) {
     return { stop: true, detail: `${why}: ${open} open tenth-man rounds and no ruling recorded. ${spawn}` };
@@ -674,7 +681,7 @@ function arbiterGate(a, state, env, why, open) {
     };
   }
   const relayAllowed = state.host === 'codex' && env.claudeCode !== true;
-  if (latest.source !== 'hook' && !relayAllowed) {
+  if (!CAPTURED_SOURCES.has(latest.source) && !relayAllowed) {
     return {
       stop: true,
       detail:
@@ -698,7 +705,7 @@ function arbiterGate(a, state, env, why, open) {
   return {
     warning:
       `the tenth-man-arbiter ruled PROCEED (${latest.file}): ${deferred} finding(s) deferred to the epic gate ` +
-      `(loop-critique.mjs deferred).${latest.source === 'hook' ? '' : ' The ruling was relayed, not captured by a hook.'}`,
+      `(loop-critique.mjs deferred).${latest.source === 'hook' ? '' : latest.source === 'transcript' ? ' The ruling was recovered from the arbiter\'s transcript (loop-critique.mjs recover).' : ' The ruling was relayed, not captured by a hook.'}`,
   };
 }
 

@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.4.0 — 2026-11-09
+
+**On Windows, no hook goes through Git Bash any more, a project can switch Git
+Bash off entirely, and a tenth-man verdict lost to a crash can be recovered.** Claude Code runs every hook command through Git Bash
+there. When `bash.exe` failed to start, `agent-track` never ran, so the critic's
+APPROVE was never recorded. The relay CLI is refused under Claude Code, which
+left the breaker blocking iteration 1 and the epic row stuck however often the
+critic was re-spawned.
+
+- **`loop-critique.mjs recover [--transcripts <dir>] [--dry-run]`** reads the
+  subagent transcripts Claude Code writes without any hook
+  (`<config>/projects/<project>/<session>/subagents/agent-<id>.jsonl` + `.meta.json`).
+  It records each finished `plan-critic` or `tenth-man-arbiter` that has no record
+  yet as `source: transcript`. It skips a transcript that finished before
+  `goal.md`/`design.md` were last written (it judged another version), one that
+  finished before the latest record on disk, and one still running, and it says
+  why for each.
+- **The breaker accepts `source: transcript`** like `hook` and names it in a
+  warning. Its "no verdict recorded" message now points at `recover`.
+- **Hook timeouts raised from 5s to 20s (30s for `agent-track`).** The hooks
+  themselves take about 40ms. The 5s were spent starting Git Bash and node on
+  Windows, and a `memory-recall` timeout discarded its output.
+- **Every hook is exec form**, `"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.mjs"]`.
+  Claude Code spawns `node` directly with no shell, so no hook goes through Git
+  Bash on Windows, and none breaks on a machine without it. Before this change
+  the shell form `node "$CLAUDE_PLUGIN_ROOT"/hooks/…` ran in PowerShell on such a
+  machine, and PowerShell does not expand `$CLAUDE_PLUGIN_ROOT`.
+- **Git Bash switch**: `{"shell":{"gitBash":false}}` in `.loop/config.json`, or
+  `LOOP_GIT_BASH=off`. With it off, `boundary-gate` (now also on the Bash tool)
+  refuses the Bash tool, and `loop-reminder` tells the session to run the
+  plugin's scripts in the PowerShell tool by their absolute path. With the switch
+  absent, a Bash call costs one more `boundary-gate` start and passes untouched.
+
 ## 1.3.0 — 2026-11-05
 
 **A hands-off run no longer stops to ask you about a tenth-man dispute that a

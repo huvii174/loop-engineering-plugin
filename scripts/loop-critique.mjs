@@ -19,6 +19,7 @@
  *   node loop-critique.mjs record   [--dir .loop] [--agent-id <id>] < critic-output.md
  *   node loop-critique.mjs rule     [--dir .loop] [--agent-id <id>] < arbiter-output.md
  *   node loop-critique.mjs status   [--dir .loop] [--json]
+ *   node loop-critique.mjs recover  [--dir .loop] [--transcripts <dir>] [--dry-run]   # the hook did not run
  *   node loop-critique.mjs excluded [--dir .loop]          # a REDESIGN's excluded directions
  *   node loop-critique.mjs deferred --epic <slug> [--dir .loop]   # the epic ledger, as loop-findings
  *
@@ -29,6 +30,11 @@
  * and the CLI refuses it inside Claude Code (CLAUDECODE=1), where the hook is
  * the route. A record forged with a shell redirect is outside what code can
  * hold; boundary-gate stops the Edit/Write tools, not `cat >`.
+ *
+ * `recover` is the route when the hook did not run (on Windows a Git Bash that
+ * fails to start takes every hook with it): it reads the subagent transcript
+ * Claude Code wrote and records with `source: transcript`, which the breaker
+ * accepts like `hook` and names in a warning. See recoverFromTranscripts.
  *
  * Every record pins `design_hash` — goal.md plus design.md, the
  * `## Tenth-man dissent` section excluded because Step 2.5 writes it after the
@@ -41,8 +47,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 /** Verdicts the output contract in agents/plan-critic.md allows. */
@@ -54,6 +61,17 @@ const BLOCKING = new Set(['blocker', 'critical']);
 
 /** Records are written by code; this is the directory boundary-gate protects. */
 export const CRITIQUE_DIR = 'critique';
+
+/**
+ * Sources whose words never passed through the designer: `hook` (agent-track
+ * at the time) and `transcript` (recover, reading the subagent transcript
+ * Claude Code wrote, after the hook did not run). `relay` is the session's.
+ */
+export const CAPTURED_SOURCES = new Set(['hook', 'transcript']);
+
+function sourceLabel(source) {
+  return CAPTURED_SOURCES.has(source) ? source : 'relay';
+}
 
 /**
  * The verdict a critic's output carries, or null. Reads the contract's
@@ -290,7 +308,7 @@ export function recordCritique(dir, text, { source = 'relay', agentId = null, no
     ...(c.reason ? [`unreadable: ${c.reason.replace(/\s+/g, ' ')}`] : []),
     ...(verdict !== 'unreadable' ? [`severities: ${formatCounts(c.counts)}`] : []),
     ...(c.findings.length ? [`findings: ${c.findings.map((f) => `${f.n}=${f.severity}`).join(',')}`] : []),
-    `source: ${source === 'hook' ? 'hook' : 'relay'}`,
+    `source: ${sourceLabel(source)}`,
     `design_hash: ${designHash(dir)}`,
     ...(agentId ? [`agent_id: ${String(agentId).replace(/\s+/g, '')}`] : []),
     `recorded: ${now.toISOString()}`,
@@ -499,7 +517,7 @@ export function recordRuling(dir, text, { source = 'relay', agentId = null, now 
     ...(c.reason ? [`unreadable: ${c.reason.replace(/\s+/g, ' ')}`] : []),
     `judged: ${judged ? `r${judged.round}` : 'none'}`,
     ...(c.ruling !== 'unreadable' ? [`upheld: ${formatCounts(c.upheld)}`, `overruled: ${c.overruled}`] : []),
-    `source: ${source === 'hook' ? 'hook' : 'relay'}`,
+    `source: ${sourceLabel(source)}`,
     `design_hash: ${designHash(dir)}`,
     ...(agentId ? [`agent_id: ${String(agentId).replace(/\s+/g, '')}`] : []),
     `recorded: ${now.toISOString()}`,
@@ -583,6 +601,158 @@ export function excludedDirections(dir, state = readState(dir)) {
   return { text: ['## Excluded directions', '', ...items, ''].join('\n') };
 }
 
+// ------------------------------------------------- recovery from a transcript
+//
+// On Windows Claude Code runs every hook command through Git Bash, and a
+// bash.exe that fails to start (MSYS under load, beside a bash status line)
+// means agent-track never runs: the critic's report reaches no record, and the
+// relay CLI is refused under Claude Code, so the gate stays pending however
+// often the critic is re-spawned into the same crash. Claude Code still writes
+// the subagent's transcript, `<projects>/<session>/subagents/agent-<id>.jsonl`
+// beside `agent-<id>.meta.json`, without any hook. `recover` reads those files
+// — code reading the critic's own words, as the hook would have — and records
+// each unrecorded, finished plan-critic or arbiter as `source: transcript`.
+//
+// Two guards keep a recovered record from claiming more than it saw:
+//   - it must have finished after goal.md and design.md were last written, so
+//     the design_hash stamped on it is the design it read (an older one judged
+//     another version, and a run's earlier critics are excluded the same way);
+//   - it must have finished after the latest record on disk, so round order is
+//     finish order.
+// A skipped transcript is listed with its reason; nothing is written for it.
+
+/** The tool a subagent in auto mode delivers its report through. */
+export const HANDBACK_TOOL = 'SubagentHandback';
+
+/**
+ * What a subagent transcript (JSONL) holds of the report: `handback`, the
+ * `message` of the last SubagentHandback tool_use when the agent handed its
+ * report back, and `closing`, the last assistant text. Either is '' when absent.
+ */
+export function transcriptReport(path) {
+  let raw;
+  try { raw = readFileSync(path, 'utf8'); } catch { return { handback: '', closing: '' }; }
+  const lines = raw.split('\n');
+  let closing = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry;
+    try { entry = JSON.parse(lines[i]); } catch { continue; }
+    if (entry?.type !== 'assistant') continue;
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) {
+      if (!closing && typeof content === 'string' && content.trim()) closing = content;
+      continue;
+    }
+    const handback = content.find((c) => c?.type === 'tool_use' && c.name === HANDBACK_TOOL);
+    const message = typeof handback?.input?.message === 'string' ? handback.input.message : '';
+    if (message.trim()) return { handback: message, closing };
+    if (!closing) {
+      const text = content.filter((c) => c?.type === 'text').map((c) => c.text).join('\n');
+      if (text.trim()) closing = text;
+    }
+  }
+  return { handback: '', closing };
+}
+
+/** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
+export function isPlanCritic(type) {
+  return typeof type === 'string' && /(^|:)plan-critic$/.test(type);
+}
+
+/** `tenth-man-arbiter`, `loop-engineering:tenth-man-arbiter`. */
+export function isArbiter(type) {
+  return typeof type === 'string' && /(^|:)tenth-man-arbiter$/.test(type);
+}
+
+/** Claude Code's transcript directory for a project: `<config>/projects/<cwd, every non-alphanumeric as ->`. */
+export function defaultTranscriptsRoot(projectDir, env = process.env) {
+  const config = env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  return join(config, 'projects', resolve(projectDir).replace(/[^a-zA-Z0-9]/g, '-'));
+}
+
+/** agent_id of every record already in critique/, whatever run it belongs to. */
+function recordedAgentIds(dir) {
+  const root = join(dir, CRITIQUE_DIR);
+  const ids = new Set();
+  if (!existsSync(root)) return ids;
+  for (const name of readdirSync(root)) {
+    if (!/^[ra]\d+\.md$/.test(name)) continue;
+    try {
+      const id = frontmatter(readFileSync(join(root, name), 'utf8')).agent_id;
+      if (id) ids.add(id);
+    } catch { /* unreadable file: not a record of anyone */ }
+  }
+  return ids;
+}
+
+function mtimeOf(p) {
+  try { return statSync(p).mtimeMs; } catch { return 0; }
+}
+
+/** Every finished plan-critic / arbiter transcript under `root`, oldest finish first. */
+function critiqueTranscripts(root) {
+  const out = [];
+  let sessions = [];
+  try { sessions = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); } catch { return out; }
+  for (const session of sessions) {
+    const sub = join(root, session, 'subagents');
+    let names = [];
+    try { names = readdirSync(sub); } catch { continue; }
+    for (const name of names) {
+      const m = /^agent-([A-Za-z0-9_-]+)\.meta\.json$/.exec(name);
+      if (!m) continue;
+      let meta;
+      try { meta = JSON.parse(readFileSync(join(sub, name), 'utf8')); } catch { continue; }
+      const kind = isPlanCritic(meta?.agentType) ? 'critique' : isArbiter(meta?.agentType) ? 'ruling' : null;
+      if (!kind) continue;
+      const transcript = join(sub, `agent-${m[1]}.jsonl`);
+      out.push({ agentId: m[1], kind, session, finished: meta.finished === true, transcript, ended: mtimeOf(transcript) });
+    }
+  }
+  return out.sort((a, b) => a.ended - b.ended);
+}
+
+/**
+ * Record every finished plan-critic / arbiter whose report no hook recorded.
+ * Returns `{ root, recorded: [{ agentId, file, verdict|ruling }], skipped: [{ agentId, why }] }`
+ * or `{ error }`. `dryRun` reports what would be recorded and writes nothing.
+ */
+export function recoverFromTranscripts(dir, { root = defaultTranscriptsRoot(dirname(resolve(dir))), dryRun = false, now = new Date() } = {}) {
+  const state = readState(dir);
+  if (!state?.run_id) return { error: `no run_id in ${join(dir, 'state.json')}` };
+  if (!existsSync(root)) return { error: `no transcript directory at ${root} — pass --transcripts <dir>` };
+  const done = recordedAgentIds(dir);
+  const designAt = Math.max(mtimeOf(join(dir, 'goal.md')), mtimeOf(join(dir, 'design.md')));
+  const latestAt = () => Math.max(0, ...[...critiqueRecords(dir, state.run_id), ...rulingRecords(dir, state.run_id)]
+    .map((r) => Date.parse(r.recorded) || 0));
+  const recorded = [];
+  const skipped = [];
+  const here = resolve(dir);
+  for (const t of critiqueTranscripts(root)) {
+    if (done.has(t.agentId)) continue;
+    const skip = (why) => skipped.push({ agentId: t.agentId, kind: t.kind, why });
+    if (!t.finished) { skip('still running (meta finished is not true)'); continue; }
+    if (t.ended < designAt) { skip('finished before goal.md/design.md were last written — it judged another version'); continue; }
+    if (t.ended < latestAt()) { skip('finished before the latest record on disk — recording it now would put rounds out of order'); continue; }
+    const report = transcriptReport(t.transcript);
+    const text = report.handback || report.closing;
+    if (!text.trim()) { skip('the transcript holds no report'); continue; }
+    const named = loopDirOf(text);
+    if (named && isAbsolute(named) && basename(named) === '.loop' && resolve(named) !== here) {
+      skip(`its report names another loop (${named}) — run recover with --dir ${named}`);
+      continue;
+    }
+    if (dryRun) { recorded.push({ agentId: t.agentId, kind: t.kind, file: '(dry run)' }); continue; }
+    const r = t.kind === 'critique'
+      ? recordCritique(dir, text, { source: 'transcript', agentId: t.agentId, now })
+      : recordRuling(dir, text, { source: 'transcript', agentId: t.agentId, now });
+    if (r.error) { skip(r.error); continue; }
+    done.add(t.agentId);
+    recorded.push({ agentId: t.agentId, kind: t.kind, file: r.file, verdict: r.verdict ?? r.ruling });
+  }
+  return { root, recorded, skipped };
+}
+
 // ------------------------------------------------------------------------ main
 
 function readStdin() {
@@ -635,6 +805,17 @@ function main(argv) {
     if (r.ruling === 'unreadable') process.stderr.write(`loop-critique: ${r.reason} — the record is kept, and counts as no ruling\n`);
     return 0;
   }
+  if (cmd === 'recover') {
+    const r = recoverFromTranscripts(dir, { root: get('--transcripts', undefined) ?? defaultTranscriptsRoot(dirname(resolve(dir))), dryRun: args.includes('--dry-run') });
+    if (r.error) {
+      process.stderr.write(`loop-critique: ${r.error}\n`);
+      return 1;
+    }
+    for (const x of r.recorded) process.stdout.write(`recorded ${x.file} — ${x.kind} from agent ${x.agentId}${x.verdict ? `, ${x.verdict}` : ''}, source transcript\n`);
+    for (const x of r.skipped) process.stdout.write(`skipped agent ${x.agentId} (${x.kind}): ${x.why}\n`);
+    if (!r.recorded.length && !r.skipped.length) process.stdout.write(`nothing to recover under ${r.root}\n`);
+    return 0;
+  }
   if (cmd === 'excluded' || cmd === 'deferred') {
     let r;
     if (cmd === 'excluded') r = excludedDirections(dir);
@@ -660,7 +841,7 @@ function main(argv) {
     }
     return 0;
   }
-  process.stderr.write('usage: loop-critique.mjs record|rule|status|excluded [--dir .loop] [--json] [--agent-id <id>] | deferred --epic <slug> [--dir .loop]\n');
+  process.stderr.write('usage: loop-critique.mjs record|rule|status|excluded [--dir .loop] [--json] [--agent-id <id>] | recover [--dir .loop] [--transcripts <dir>] [--dry-run] | deferred --epic <slug> [--dir .loop]\n');
   return 1;
 }
 

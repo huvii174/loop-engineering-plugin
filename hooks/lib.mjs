@@ -9,7 +9,8 @@
  */
 
 import { readFileSync, statSync, readdirSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export async function readStdinJson() {
   let raw = '';
@@ -41,6 +42,26 @@ export function memoryGitOff(cwd) {
     return cfg?.memory?.git === false;
   } catch { return false; }
 }
+
+/**
+ * Is Git Bash switched off for this project? `LOOP_GIT_BASH=off` (or `0`) for
+ * one shell, `.loop/config.json` → `{"shell":{"gitBash":false}}` for the
+ * project. On Windows a bash.exe that fails to start drops whatever it was
+ * running, so a project that switches it off gets no flow through it: the hooks
+ * are exec form already, boundary-gate refuses the Bash tool, and loop-reminder
+ * names the PowerShell route for the plugin's scripts.
+ */
+export function gitBashOff(cwd) {
+  const env = process.env.LOOP_GIT_BASH;
+  if (env === 'off' || env === '0') return true;
+  try {
+    const cfg = JSON.parse(readFileSync(join(cwd, '.loop', 'config.json'), 'utf8'));
+    return cfg?.shell?.gitBash === false;
+  } catch { return false; }
+}
+
+/** The installed plugin's root, resolved from this file — what `${CLAUDE_PLUGIN_ROOT}` names. */
+export const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function loadState(cwd) {
   const p = join(cwd, '.loop', 'state.json');

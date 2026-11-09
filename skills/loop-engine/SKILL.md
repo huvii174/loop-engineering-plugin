@@ -61,6 +61,13 @@ ignored.
 that warning and removes the archive behind Delete, so maintenance demotes
 instead — Delete only an entry that would mislead.
 
+**Switching Git Bash off** (Windows, where a `bash.exe` that fails to start
+drops whatever it ran): `.loop/config.json` → `{"shell":{"gitBash":false}}`, or
+`LOOP_GIT_BASH=off` for one shell. The hooks never use a shell (exec form);
+with the switch off `boundary-gate` also refuses the Bash tool, and every
+`node "$CLAUDE_PLUGIN_ROOT"/scripts/…` step runs in the PowerShell tool with the
+absolute path `loop-reminder` prints at session start.
+
 ## Parallel slices — `.loop/parallel.json`
 
 One `.loop/` tracks one active goal, so parallel sub-goals run in separate git
@@ -407,7 +414,7 @@ a goal that is already met.
 | **No progress** | ⚙ script | 5 consecutive fails with no pass in between | `stuck` |
 | **Plateau** | ⚙ script | `criteria_passed` flat for 4 `kind: criterion` iterations despite passing verdicts | `stuck` |
 | **Unreadable record** | ⚙ script | a verdict outside the enum at or after `record_contract_since`, or a sub-95 design gate with no assumptions | exit `1` — fix the record |
-| **Tenth man pending** | ⚙ script | iteration 0 of a `medium`/`large` goal (no tier rounds up), or of any goal under a hands-off `run.json` or `hands_off` state, whose latest `.loop/critique/` record for `run_id` is not an APPROVE of the current goal.md + design.md (`design_hash`) captured by the hook — `source: relay` counts only with `host: "codex"`. Two open rounds (REVISE or REJECT) pass only when `tenth_man_ruling` names a `decisions/` heading written after the last of them — or, under hands-off, when the latest tenth-man-arbiter ruling is a PROCEED of the current design captured by the hook (its deferred count is printed as a warning); a REDESIGN stops the item as `stuck — redesign` | exit `1` — get the critique, the ruling, or the redesign |
+| **Tenth man pending** | ⚙ script | iteration 0 of a `medium`/`large` goal (no tier rounds up), or of any goal under a hands-off `run.json` or `hands_off` state, whose latest `.loop/critique/` record for `run_id` is not an APPROVE of the current goal.md + design.md (`design_hash`) captured by the hook (or recovered from the critic's transcript by `loop-critique.mjs recover`, `source: transcript`) — `source: relay` counts only with `host: "codex"`. Two open rounds (REVISE or REJECT) pass only when `tenth_man_ruling` names a `decisions/` heading written after the last of them — or, under hands-off, when the latest tenth-man-arbiter ruling is a PROCEED of the current design captured by the hook (its deferred count is printed as a warning); a REDESIGN stops the item as `stuck — redesign` | exit `1` — get the critique, the ruling, or the redesign |
 | **Advisory** | ⚙ script | any counter one short of its threshold | none — prints `ADVISORY`, exit stays `0` |
 | Verifier escalation | model | verdict `ESCALATE_HUMAN` (environment problem, risky change) | `stuck` |
 | User cancel | model | user says stop | `stopped-user` |

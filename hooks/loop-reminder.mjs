@@ -20,7 +20,7 @@
 import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { readStdinJson, hooksOff, loadState, readIfExists, runStanding, memoryGitOff } from './lib.mjs';
+import { readStdinJson, hooksOff, loadState, readIfExists, runStanding, memoryGitOff, gitBashOff, PLUGIN_ROOT } from './lib.mjs';
 
 const MAX_SLUGS = 8;
 
@@ -134,6 +134,13 @@ async function main() {
       `un-ignore a child of an ignored directory, so the parent must be \`.loop/*\` + \`!.loop/memory/\` ` +
       `+ \`.loop/memory/scratch/\`. To keep the store out of git on purpose, set ` +
       `\`{"memory":{"git":false}}\` in .loop/config.json (or LOOP_MEMORY_GIT=off) and this line stops.\n`;
+  }
+
+  if (gitBashOff(cwd)) {
+    out +=
+      `[loop-engineering] Git Bash is switched off for this project — the Bash tool is refused. Run commands with ` +
+      `the PowerShell tool. Where a step says \`node "$CLAUDE_PLUGIN_ROOT"/scripts/<script>.mjs\`, run ` +
+      `\`node "${join(PLUGIN_ROOT, 'scripts')}/<script>.mjs"\` — PowerShell does not expand $CLAUDE_PLUGIN_ROOT.\n`;
   }
 
   if (out) process.stdout.write(out);

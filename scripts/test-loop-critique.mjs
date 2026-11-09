@@ -5,12 +5,12 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { critiqueStanding, loopDirOf, parseVerdict, recordCritique, recordRuling, rulingStanding } from './loop-critique.mjs';
+import { critiqueStanding, defaultTranscriptsRoot, loopDirOf, parseVerdict, recordCritique, recordRuling, recoverFromTranscripts, rulingStanding } from './loop-critique.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'loop-critique.mjs');
 const BREAKER = join(dirname(fileURLToPath(import.meta.url)), 'loop-breaker.mjs');
@@ -620,6 +620,80 @@ check('parseVerdict: the unfilled three-way template is no verdict', parseVerdic
   mkdirSync(join(dir, 'memory', 'decisions'), { recursive: true });
   writeFileSync(join(dir, 'memory', 'decisions', 'durable.md'), '### D-077 · active · 2026-10-29\n**Decision:** ship as designed\n');
   check('breaker on disk: the ruling resolves to a decision written after the last REVISE → exit 0', breaker().status === 0, breaker().stdout);
+  rmSync(root, { recursive: true, force: true });
+}
+
+// ------------------------------------------- recover: the hook did not run
+// On Windows a Git Bash that fails to start takes agent-track with it; the
+// subagent transcript Claude Code wrote is still on disk.
+{
+  const { root, dir } = project({ run_id: 'run-w', tier: 'medium', iteration: 0, history: [] });
+  writeFileSync(join(dir, 'goal.md'), '# goal\n');
+  writeFileSync(join(dir, 'design.md'), '# design\n');
+  const past = (s) => new Date(Date.now() - s * 1000);
+  utimesSync(join(dir, 'goal.md'), past(600), past(600));
+  utimesSync(join(dir, 'design.md'), past(600), past(600));
+  const tr = join(root, 'transcripts');
+  const agent = (session, id, type, lines, { finished = true, age = 60 } = {}) => {
+    const sub = join(tr, session, 'subagents');
+    mkdirSync(sub, { recursive: true });
+    writeFileSync(join(sub, `agent-${id}.meta.json`), JSON.stringify({ agentType: type, finished }));
+    const f = join(sub, `agent-${id}.jsonl`);
+    writeFileSync(f, lines.map((l) => JSON.stringify(l)).join('\n'));
+    utimesSync(f, past(age), past(age));
+  };
+  const said = (text) => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  const handedBack = (message) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SubagentHandback', input: { message } }] } });
+
+  agent('s1', 'old', 'loop-engineering:plan-critic', [said(REVISE)], { age: 900 });
+  agent('s1', 'busy', 'plan-critic', [said(APPROVE)], { finished: false });
+  agent('s1', 'verif', 'loop-engineering:loop-verifier', [said(APPROVE)]);
+  agent('s2', 'crit', 'loop-engineering:plan-critic', [handedBack(APPROVE), said('Report delivered.')], { age: 30 });
+
+  const dry = recoverFromTranscripts(dir, { root: tr, dryRun: true });
+  check('recover --dry-run: names the critic it would record, writes nothing',
+    dry.recorded.length === 1 && dry.recorded[0].agentId === 'crit' && !existsSync(join(dir, 'critique')), JSON.stringify(dry));
+
+  const r = recoverFromTranscripts(dir, { root: tr });
+  const file = join(dir, 'critique', 'r1.md');
+  const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  check('recover: the finished critic’s hand-back is recorded verbatim, source transcript, its agent_id',
+    r.recorded.length === 1 && /^source: transcript$/m.test(text) && /^agent_id: crit$/m.test(text) && /^verdict: APPROVE$/m.test(text)
+      && text.includes('the cache key') && !text.includes('Report delivered.'), JSON.stringify(r));
+  check('recover: an older critic (judged another design) and a running one are skipped with a reason; a verifier is ignored',
+    r.skipped.some((x) => x.agentId === 'old' && /another version/.test(x.why)) && r.skipped.some((x) => x.agentId === 'busy' && /running/.test(x.why))
+      && !r.skipped.some((x) => x.agentId === 'verif') && readdirSync(join(dir, 'critique')).length === 1, JSON.stringify(r.skipped));
+  check('standing: a transcript-recovered APPROVE of the current design is approved', critiqueStanding(dir).approved && critiqueStanding(dir).latest.source === 'transcript');
+
+  const again = recoverFromTranscripts(dir, { root: tr });
+  check('recover: running again records nothing twice', again.recorded.length === 0 && readdirSync(join(dir, 'critique')).length === 1, JSON.stringify(again));
+
+  const breaker = spawnSync(process.execPath, [BREAKER, '--state', join(dir, 'state.json'), '--json'], { encoding: 'utf8', env: { ...process.env, CLAUDECODE: '1' } });
+  let v = {};
+  try { v = JSON.parse(breaker.stdout); } catch { /* checked below */ }
+  check('breaker under Claude Code: a transcript APPROVE opens iteration 1, with a warning naming recover',
+    breaker.status === 0 && !v.stop && JSON.stringify(v.warnings ?? []).includes('recover'), breaker.stdout + breaker.stderr);
+
+  const cli = spawnSync(process.execPath, [SCRIPT, 'recover', '--dir', dir, '--transcripts', join(root, 'none')], { encoding: 'utf8', env: { ...process.env, CLAUDECODE: '1' } });
+  check('cli recover: allowed under Claude Code; a missing transcript directory is refused naming --transcripts',
+    cli.status === 1 && /--transcripts/.test(cli.stderr), cli.stderr);
+  const cli2 = spawnSync(process.execPath, [SCRIPT, 'recover', '--dir', dir, '--transcripts', tr], { encoding: 'utf8', env: { ...process.env, CLAUDECODE: '1' } });
+  check('cli recover: lists what it skipped, exit 0', cli2.status === 0 && /skipped agent old/.test(cli2.stdout), cli2.stdout + cli2.stderr);
+
+  check('defaultTranscriptsRoot: every non-alphanumeric of the project path becomes -',
+    defaultTranscriptsRoot('/Users/a b/my.proj', { CLAUDE_CONFIG_DIR: '/cfg' }) === join('/cfg', 'projects', '-Users-a-b-my-proj'));
+  rmSync(root, { recursive: true, force: true });
+}
+{
+  // An arbiter whose hook did not run is recovered as a ruling.
+  const { root, dir } = project({ run_id: 'run-x', tier: 'medium', iteration: 0, history: [] });
+  const sub = join(root, 't', 's', 'subagents');
+  mkdirSync(sub, { recursive: true });
+  writeFileSync(join(sub, 'agent-arb.meta.json'), JSON.stringify({ agentType: 'loop-engineering:tenth-man-arbiter', finished: true }));
+  writeFileSync(join(sub, 'agent-arb.jsonl'), JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '## Ruling: PROCEED\n' }] } }));
+  const r = recoverFromTranscripts(dir, { root: join(root, 't') });
+  check('recover: a finished arbiter is written as a ruling record (a1.md), source transcript',
+    r.recorded.length === 1 && r.recorded[0].kind === 'ruling' && /^source: transcript$/m.test(readFileSync(join(dir, 'critique', 'a1.md'), 'utf8')), JSON.stringify(r));
   rmSync(root, { recursive: true, force: true });
 }
 

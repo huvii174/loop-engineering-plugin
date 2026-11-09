@@ -35,25 +35,16 @@
  * A critic judging a worktree slice opens its report with `Loop: <abs path>/.loop`;
  * the record goes there when that directory holds a state.json, and to this
  * session's `.loop/` otherwise.
+ *
+ * When this hook does not run at all (on Windows a Git Bash that fails to
+ * start), `loop-critique.mjs recover` records the report from the same
+ * transcript afterwards, as `source: transcript`.
  */
 
 import { mkdirSync, writeFileSync, unlinkSync, rmdirSync, existsSync, readFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { readStdinJson, hooksOff, isPlainId } from './lib.mjs';
-import { recordCritique, recordRuling, loopDirOf } from '../scripts/loop-critique.mjs';
-
-/** The tool a subagent in auto mode delivers its report through. */
-const HANDBACK_TOOL = 'SubagentHandback';
-
-/** `plan-critic`, `loop-engineering:plan-critic` — the namespace varies by install. */
-function isPlanCritic(type) {
-  return typeof type === 'string' && /(^|:)plan-critic$/.test(type);
-}
-
-/** `tenth-man-arbiter`, `loop-engineering:tenth-man-arbiter`. */
-function isArbiter(type) {
-  return typeof type === 'string' && /(^|:)tenth-man-arbiter$/.test(type);
-}
+import { HANDBACK_TOOL, isArbiter, isPlanCritic, loopDirOf, recordCritique, recordRuling, transcriptReport } from '../scripts/loop-critique.mjs';
 
 /**
  * The two agents whose report this hook records, and how: the critic's as a
@@ -66,35 +57,7 @@ function recorderFor(type) {
   return null;
 }
 
-/**
- * What a subagent transcript (JSONL) holds of the report: `handback`, the
- * `message` of the last SubagentHandback tool_use when the agent handed its
- * report back, and `closing`, the last assistant text. Either is '' when absent.
- */
-export function transcriptReport(path) {
-  let raw;
-  try { raw = readFileSync(path, 'utf8'); } catch { return { handback: '', closing: '' }; }
-  const lines = raw.split('\n');
-  let closing = '';
-  for (let i = lines.length - 1; i >= 0; i--) {
-    let entry;
-    try { entry = JSON.parse(lines[i]); } catch { continue; }
-    if (entry?.type !== 'assistant') continue;
-    const content = entry.message?.content;
-    if (!Array.isArray(content)) {
-      if (!closing && typeof content === 'string' && content.trim()) closing = content;
-      continue;
-    }
-    const handback = content.find((c) => c?.type === 'tool_use' && c.name === HANDBACK_TOOL);
-    const message = typeof handback?.input?.message === 'string' ? handback.input.message : '';
-    if (message.trim()) return { handback: message, closing };
-    if (!closing) {
-      const text = content.filter((c) => c?.type === 'text').map((c) => c.text).join('\n');
-      if (text.trim()) closing = text;
-    }
-  }
-  return { handback: '', closing };
-}
+export { transcriptReport };
 
 /**
  * Record `text` with `recorder`, in the `.loop/` its `Loop:` line names or this

@@ -1,5 +1,5 @@
 {
-  "description": "loop-engineering deterministic gates — boundary enforcement while a loop runs, memory-compounding gate at stop (loop + ad-hoc nudge), run-gate holding an epic run open until its backlog is done (silent while a subagent this session spawned is running, tracked by agent-track, which also records each plan-critic verdict and each tenth-man-arbiter ruling verbatim to .loop/critique/ (a PROCEED ruling also to the epic ledger .loop/epics/<slug>/rulings/) — from the report it hands back through SubagentHandback, else its last message — where boundary-gate blocks hand edits, and refuses a plan-critic or tenth-man-arbiter spawned with a name, which agent teams turn into a teammate, whose report the hook cannot see), open-loop/open-run reminder + memory digest at session start, keyword auto-recall on every user prompt. All fail-open; bypass with LOOP_HOOKS_OFF=1.",
+  "description": "loop-engineering deterministic gates — boundary enforcement while a loop runs, memory-compounding gate at stop (loop + ad-hoc nudge), run-gate holding an epic run open until its backlog is done (silent while a subagent this session spawned is running, tracked by agent-track, which also records each plan-critic verdict and each tenth-man-arbiter ruling verbatim to .loop/critique/ (a PROCEED ruling also to the epic ledger .loop/epics/<slug>/rulings/) — from the report it hands back through SubagentHandback, else its last message — where boundary-gate blocks hand edits, and refuses a plan-critic or tenth-man-arbiter spawned with a name, which agent teams turn into a teammate, whose report the hook cannot see), open-loop/open-run reminder + memory digest at session start, keyword auto-recall on every user prompt. Every hook is exec form (`node` + args, no shell), so none goes through Git Bash on Windows; with Git Bash switched off for the project ({\"shell\":{\"gitBash\":false}} in .loop/config.json, or LOOP_GIT_BASH=off) boundary-gate also refuses the Bash tool. All fail-open; bypass with LOOP_HOOKS_OFF=1.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -7,20 +7,26 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/memory-recall.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/memory-recall.mjs"
+            ],
+            "timeout": 20
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Agent|Task",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Agent|Task|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/boundary-gate.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/boundary-gate.mjs"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -31,8 +37,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/agent-track.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-track.mjs"
+            ],
+            "timeout": 30
           }
         ]
       }
@@ -43,13 +52,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/memory-gate.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/memory-gate.mjs"
+            ],
+            "timeout": 20
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/run-gate.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-gate.mjs"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -60,8 +75,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/agent-track.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-track.mjs"
+            ],
+            "timeout": 30
           }
         ]
       }
@@ -72,8 +90,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/agent-track.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/agent-track.mjs"
+            ],
+            "timeout": 30
           }
         ]
       }
@@ -84,8 +105,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PLUGIN_ROOT\"/hooks/loop-reminder.mjs",
-            "timeout": 5
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/loop-reminder.mjs"
+            ],
+            "timeout": 20
           }
         ]
       }

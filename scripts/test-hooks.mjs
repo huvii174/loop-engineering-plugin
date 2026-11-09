@@ -20,7 +20,7 @@ function runHook(script, stdinObj, env = {}) {
   const r = spawnSync('node', [join(HOOKS, script)], {
     input: JSON.stringify(stdinObj),
     encoding: 'utf8',
-    env: { ...process.env, LOOP_HOOKS_OFF: '', LOOP_MEMORY_GIT: '', ...env },
+    env: { ...process.env, LOOP_HOOKS_OFF: '', LOOP_MEMORY_GIT: '', LOOP_GIT_BASH: '', ...env },
     timeout: 10000,
   });
   return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '' };
@@ -1259,19 +1259,53 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
 // ------------------------------------------------------------ hooks.json wiring
 {
   const cfg = JSON.parse(readFileSync(join(HOOKS, 'hooks.json'), 'utf8'));
-  const scripts = (event) => (cfg.hooks[event] ?? []).flatMap((m) => m.hooks.map((h) => (h.command.match(/hooks\/([\w-]+\.mjs)/) ?? [])[1]));
+  const line = (h) => [h.command, ...(h.args ?? [])].join(' ');
+  const scripts = (event) => (cfg.hooks[event] ?? []).flatMap((m) => m.hooks.map((h) => (line(h).match(/hooks\/([\w-]+\.mjs)/) ?? [])[1]));
   const all = Object.keys(cfg.hooks).flatMap(scripts);
   check('hooks.json: every command names a hook script that exists', all.length > 0 && all.every((f) => f && existsSync(join(HOOKS, f))), all.join(','));
   check('hooks.json: SubagentStart and SubagentStop run agent-track.mjs for every agent type',
-    ['SubagentStart', 'SubagentStop'].every((e) => (cfg.hooks[e] ?? []).some((m) => m.matcher === '*' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command)))),
+    ['SubagentStart', 'SubagentStop'].every((e) => (cfg.hooks[e] ?? []).some((m) => m.matcher === '*' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(line(h))))),
     JSON.stringify({ start: cfg.hooks.SubagentStart, stop: cfg.hooks.SubagentStop }).slice(0, 200));
   check('hooks.json: PreToolUse runs boundary-gate.mjs on Agent and Task spawns',
-    (cfg.hooks.PreToolUse ?? []).some((m) => m.matcher.split('|').includes('Agent') && m.matcher.split('|').includes('Task') && m.hooks.some((h) => /hooks\/boundary-gate\.mjs"?$/.test(h.command))),
+    (cfg.hooks.PreToolUse ?? []).some((m) => m.matcher.split('|').includes('Agent') && m.matcher.split('|').includes('Task') && m.hooks.some((h) => /hooks\/boundary-gate\.mjs"?$/.test(line(h)))),
     JSON.stringify(cfg.hooks.PreToolUse ?? null).slice(0, 200));
-  check('hooks.json: Stop runs run-gate.mjs', (cfg.hooks.Stop ?? []).some((m) => m.hooks.some((h) => /hooks\/run-gate\.mjs"?$/.test(h.command))), '');
+  check('hooks.json: Stop runs run-gate.mjs', (cfg.hooks.Stop ?? []).some((m) => m.hooks.some((h) => /hooks\/run-gate\.mjs"?$/.test(line(h)))), '');
   check('hooks.json: PostToolUse runs agent-track.mjs on SubagentHandback',
-    (cfg.hooks.PostToolUse ?? []).some((m) => m.matcher === 'SubagentHandback' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(h.command))),
+    (cfg.hooks.PostToolUse ?? []).some((m) => m.matcher === 'SubagentHandback' && m.hooks.some((h) => /hooks\/agent-track\.mjs"?$/.test(line(h)))),
     JSON.stringify(cfg.hooks.PostToolUse ?? null).slice(0, 200));
+  check('hooks.json: every hook is exec form — `node` + the script in args, no shell (Git Bash on Windows)',
+    Object.values(cfg.hooks).flat().flatMap((m) => m.hooks).every((h) => h.command === 'node' && Array.isArray(h.args) && h.args.length === 1
+      && /^\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/[\w-]+\.mjs$/.test(h.args[0]) && !('shell' in h)),
+    JSON.stringify(Object.values(cfg.hooks).flat().flatMap((m) => m.hooks).find((h) => h.command !== 'node') ?? null));
+  check('hooks.json: PreToolUse runs boundary-gate.mjs on the Bash tool (the Git Bash switch)',
+    (cfg.hooks.PreToolUse ?? []).some((m) => m.matcher.split('|').includes('Bash') && m.hooks.some((h) => /hooks\/boundary-gate\.mjs"?$/.test(line(h)))), '');
+}
+
+// ------------------------------------------------- Git Bash switched off
+{
+  const bash = (d, env = {}) => runHook('boundary-gate.mjs', { cwd: d, tool_name: 'Bash', tool_input: { command: 'ls' } }, env);
+  const d = proj({ state: { status: 'running', iteration: 1, history: [] } });
+  let r = bash(d);
+  check('git-bash: switch absent → the Bash tool passes (exit 0, silent)', r.code === 0 && r.err === '', r.err);
+  writeFileSync(join(d, '.loop', 'config.json'), JSON.stringify({ shell: { gitBash: false } }));
+  r = bash(d);
+  check('git-bash: {"shell":{"gitBash":false}} → the Bash tool is refused (exit 2) naming the PowerShell tool and an absolute script path',
+    r.code === 2 && /PowerShell tool/.test(r.err) && r.err.includes(join(HOOKS, '..', 'scripts')), r.err);
+  const edit = runHook('boundary-gate.mjs', { cwd: d, tool_name: 'Edit', tool_input: { file_path: join(d, 'a.txt') } });
+  check('git-bash: the switch leaves non-Bash tools alone', edit.code === 0, edit.err);
+  const rem = runHook('loop-reminder.mjs', { cwd: d });
+  check('git-bash: loop-reminder names the PowerShell route with the resolved scripts path',
+    rem.code === 0 && /Git Bash is switched off/.test(rem.out) && rem.out.includes(join(HOOKS, '..', 'scripts')), rem.out.slice(0, 200));
+  writeFileSync(join(d, '.loop', 'config.json'), JSON.stringify({ shell: { gitBash: true } }));
+  r = bash(d);
+  const quiet = runHook('loop-reminder.mjs', { cwd: d });
+  check('git-bash: gitBash true → Bash passes and the reminder says nothing about it', r.code === 0 && !/Git Bash/.test(quiet.out), r.err + quiet.out);
+  const bare = mkdtempSync(join(tmpdir(), 'loop-hook-test-'));
+  cleanup.push(bare);
+  r = bash(bare, { LOOP_GIT_BASH: 'off' });
+  check('git-bash: LOOP_GIT_BASH=off refuses Bash even without .loop/', r.code === 2, r.err);
+  r = bash(bare, { LOOP_GIT_BASH: 'off', LOOP_HOOKS_OFF: '1' });
+  check('git-bash: LOOP_HOOKS_OFF=1 still bypasses', r.code === 0, r.err);
 }
 
 for (const d of cleanup) rmSync(d, { recursive: true, force: true });
