@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.1 — 2026-11-09
+
+**With Git Bash switched off, the plugin's agents still have a shell.** In 1.4.0
+the switch refused the Bash tool in subagents too, and `loop-verifier`,
+`plan-critic`, `tenth-man-arbiter` and `epic-planner` were limited to
+`Read, Grep, Glob, Bash`. The verifier could run nothing, so an epic item
+stayed `stuck` with no independent verdict.
+
+- **Each agent's `tools:` line adds `PowerShell`.** Where the PowerShell tool
+  is unavailable (macOS, Linux, or Windows with it turned off), Claude Code drops
+  it from the list and the agent runs with the rest, as before.
+- A hook test fails if an agent's `tools:` line names Bash without PowerShell.
+
 ## 1.4.0 — 2026-11-09
 
 **On Windows, no hook goes through Git Bash any more, a project can switch Git

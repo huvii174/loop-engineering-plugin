@@ -1283,6 +1283,15 @@ DB_HOST, DB_PORT and DB_SSL_REQUIRE=false, or all 43 route tests ERROR at setup.
 
 // ------------------------------------------------- Git Bash switched off
 {
+  // With the switch off the Bash tool is refused in subagents too, so an agent
+  // whose tools: line names Bash alone has no shell left (item 10, 1.4.0).
+  const agentsDir = join(HOOKS, '..', 'agents');
+  const shellless = readdirSync(agentsDir).filter((f) => f.endsWith('.md')).filter((f) => {
+    const tools = (/^tools:\s*(.*)$/m.exec(readFileSync(join(agentsDir, f), 'utf8')) ?? [])[1];
+    return tools !== undefined && /\bBash\b/.test(tools) && !/\bPowerShell\b/.test(tools);
+  });
+  check('git-bash: every agent whose tools: line names Bash also names PowerShell', shellless.length === 0, shellless.join(','));
+
   const bash = (d, env = {}) => runHook('boundary-gate.mjs', { cwd: d, tool_name: 'Bash', tool_input: { command: 'ls' } }, env);
   const d = proj({ state: { status: 'running', iteration: 1, history: [] } });
   let r = bash(d);

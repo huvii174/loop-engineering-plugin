@@ -2,7 +2,7 @@
 name: tenth-man-arbiter
 description: Rules a disagreement between the designer and the tenth man under --hands-off, where the user is not asked — reads both sides on disk and rules each finding of the judged critic round UPHELD or OVERRULED with its severity. Its ruling, recorded by code, decides whether the run proceeds (findings deferred to the epic gate) or stops for a redesign. Use when the breaker names it after two open critic rounds.
 model: inherit
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
 # Tenth-Man Arbiter

@@ -2,7 +2,7 @@
 name: plan-critic
 description: Tenth-man reviewer for design-gate output — assumes the signed-off design is wrong and builds the strongest evidence-backed case against it before any loop iteration runs. Dissent is mandatory in investigation, not in verdict. Use after /loop-engineering:design writes goal.md + design.md, before the loop starts.
 model: inherit
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
 # Plan Critic — The Tenth Man

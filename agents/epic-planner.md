@@ -2,7 +2,7 @@
 name: epic-planner
 description: BA/PM decomposition specialist — analyzes an epic against the actual codebase and proposes small, ordered, independently verifiable sub-goals. Proposes only; never designs implementations, never writes code or files.
 model: inherit
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
 # Epic Planner (BA/PM)

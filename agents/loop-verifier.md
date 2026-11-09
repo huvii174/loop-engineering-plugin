@@ -2,7 +2,7 @@
 name: loop-verifier
 description: Fresh-context verifier for loop iterations — gates the loop's exit and each iteration's verdict. Reject-by-default; demands executable evidence. Use after every loop iteration and before declaring the goal met.
 model: inherit
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
 # Loop Verifier
